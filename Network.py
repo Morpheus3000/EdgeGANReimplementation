@@ -42,6 +42,16 @@ class EdgeGuidedNetwork(nn.Module):
 
         self.G_i_img = nn.Conv2d(nf // 8, 3, 3, padding=1)
 
+        # Semantic Preserving Module
+        self.F_c_conv = nn.Conv2d((nf + seg_classes + 3 + 3), seg_classes, 3,
+                                  padding=1)
+        self.adapt_avg = nn.AdaptiveAvgPool2d((1, 1))
+        self.sig = nn.Sigmoid()
+        self.F_c_d_conv = nn.Conv2d(seg_classes, (nf + seg_classes + 3 + 3), 3,
+                                    padding=1)
+
+        self.I_img = nn.Conv2d((nf + seg_classes + 3 + 3), 3, 3, padding=1)
+
     def forward(self, seg):
         # Parameter sharing encoder
         F_enc = self.E(seg)
@@ -63,8 +73,19 @@ class EdgeGuidedNetwork(nn.Module):
         I_i_d = torch.tanh(self.G_i_img(F.leaky_relu(F_i_3_attn, 2e-1)))
         I_d = self.attention(I_e_d, I_i_d)
 
+        # Semantic Preserving Module
+        sem_pre_mod = torch.cat([seg, I_e_d, I_d, F_enc], 1)
+
+        F_c = self.F_c_conv(sem_pre_mod)
+        gamma = self.adapt_avg(F_c)
+        gamma_d = self.sig(gamma)
+        F_c_d = (gamma_d * F_c) + F_c
+        F_d = self.F_c_d_conv(F_c_d)
+        I_dd = torch.tanh(self.I_img(F_d))
+
         return {'edge': I_e_d,
-                'image_init': I_d}
+                'image_init': I_d,
+                'image': I_dd}
 
 
 if __name__ == '__main__':
