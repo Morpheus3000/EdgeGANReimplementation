@@ -12,7 +12,7 @@ from synchronised_batch_norm.batchnorm import SynchronizedBatchNorm2d
 import torch.nn.utils.spectral_norm as spectral_norm
 
 class MultiscaleDiscriminator(BaseNetwork):
-    def __init__(self):
+    def __init__(self, in_channels=182+1+3): 
         super().__init__()
         num_D = 2
         for i in range(num_D):
@@ -20,7 +20,7 @@ class MultiscaleDiscriminator(BaseNetwork):
             self.add_module('discriminator_%d' % i, subnetD)
 
     def create_single_discriminator(self):
-        netD = NLayerDiscriminator()
+        netD = NLayerDiscriminator(in_channels)
 
     def downsample(self, input):
         return F.avg_pool2d(input, kernel_size=3,
@@ -45,17 +45,17 @@ class MultiscaleDiscriminator(BaseNetwork):
 # Defines the PatchGAN discriminator with the specified arguments.
 class NLayerDiscriminator(BaseNetwork):
 
-    def __init__(self):
+    def __init__(self, in_channels):
         super().__init__()
 
         kw = 4
         padw = int(np.ceil((kw - 1.0) / 2))
         nf = 64
-		n_layers_D = 3 # todo parser default says 4 but issue/36 says 3 
-        input_nc = self.compute_D_input_nc()
+	n_layers_D = 3 # todo parser default says 4 but issue/36 says 3 
+        # input_nc = self.compute_D_input_nc()
 
         norm_layer = get_nonspade_norm_layer('spectralinstance')
-        sequence = [[nn.Conv2d(input_nc, nf, kernel_size=kw, stride=2, padding=padw),
+        sequence = [[nn.Conv2d(in_channels, nf, kernel_size=kw, stride=2, padding=padw),
                      nn.LeakyReLU(0.2, False)]]
 
         for n in range(1, n_layers_D):
@@ -74,10 +74,11 @@ class NLayerDiscriminator(BaseNetwork):
             self.add_module('model' + str(n), nn.Sequential(*sequence[n]))
 
     def compute_D_input_nc(self):
-	    label_nc = 182
-		output_nc = 3
-		contain_dontcare_label = True
-		no_instance = False
+	label_nc = 182
+	edge_nc = 1
+        output_nc = 3
+        contain_dontcare_label = True
+        no_instance = False
 		
         input_nc = label_nc + output_nc
         if contain_dontcare_label:
