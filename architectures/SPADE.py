@@ -1,0 +1,186 @@
+import re
+import torch
+import torch.nn as nn
+from torch.nn import init
+import torch.nn.functional as F
+import torch.nn.utils.spectral_norm as spectral_norm
+from synchronised_batch_norm.batchnorm import SynchronizedBatchNorm2d
+
+
+class BaseNetwork(nn.Module):
+    def __init__(self):
+        super(BaseNetwork, self).__init__()
+
+    @staticmethod
+    def modify_commandline_options(parser, is_train):
+        return parser
+
+    def print_network(self):
+        if isinstance(self, list):
+            self = self[0]
+        num_params = 0
+        for param in self.parameters():
+            num_params += param.numel()
+        print('Network [%s] was created. Total number of parameters: %.1f million. '
+              'To see the architecture, do print(network).'
+              % (type(self).__name__, num_params / 1000000))
+
+    def init_weights(self, init_type='normal', gain=0.02):
+        def init_func(m):
+            classname = m.__class__.__name__
+            if classname.find('BatchNorm2d') != -1:
+                if hasattr(m, 'weight') and m.weight is not None:
+                    init.normal_(m.weight.data, 1.0, gain)
+                if hasattr(m, 'bias') and m.bias is not None:
+                    init.constant_(m.bias.data, 0.0)
+            elif hasattr(m, 'weight') and (classname.find('Conv') != -1 or classname.find('Linear') != -1):
+                if init_type == 'normal':
+                    init.normal_(m.weight.data, 0.0, gain)
+                elif init_type == 'xavier':
+                    init.xavier_normal_(m.weight.data, gain=gain)
+                elif init_type == 'xavier_uniform':
+                    init.xavier_uniform_(m.weight.data, gain=1.0)
+                elif init_type == 'kaiming':
+                    init.kaiming_normal_(m.weight.data, a=0, mode='fan_in')
+                elif init_type == 'orthogonal':
+                    init.orthogonal_(m.weight.data, gain=gain)
+                elif init_type == 'none':  # uses pytorch's default init method
+                    m.reset_parameters()
+                else:
+                    raise NotImplementedError('initialization method [%s] is not implemented' % init_type)
+                if hasattr(m, 'bias') and m.bias is not None:
+                    init.constant_(m.bias.data, 0.0)
+
+        self.apply(init_func)
+
+        # propagate to children
+        for m in self.children():
+            if hasattr(m, 'init_weights'):
+                m.init_weights(init_type, gain)
+
+
+# Creates SPADE normalization layer based on the given configuration
+# SPADE consists of two steps. First, it normalizes the activations using
+# your favorite normalization method, such as Batch Norm or Instance Norm.
+# Second, it applies scale and bias to the normalized output, conditioned on
+# the segmentation map.
+# The format of |config_text| is spade(norm)(ks), where
+# (norm) specifies the type of parameter-free normalization.
+#       (e.g. syncbatch, batch, instance)
+# (ks) specifies the size of kernel in the SPADE module (e.g. 3x3)
+# Example |config_text| will be spadesyncbatch3x3, or spadeinstance5x5.
+# Also, the other arguments are
+# |norm_nc|: the #channels of the normalized activations, hence the output dim of SPADE
+# |label_nc|: the #channels of the input semantic map, hence the input dim of SPADE
+class SPADE(nn.Module):
+    def __init__(self, config_text, norm_nc, label_nc):
+        super().__init__()
+
+        assert config_text.startswith('spade')
+        parsed = re.search('spade(\D+)(\d)x\d', config_text)
+        param_free_norm_type = str(parsed.group(1))
+        ks = int(parsed.group(2))
+
+        if param_free_norm_type == 'instance':
+            self.param_free_norm = nn.InstanceNorm2d(norm_nc, affine=False)
+        elif param_free_norm_type == 'syncbatch':
+            self.param_free_norm = SynchronizedBatchNorm2d(norm_nc, affine=False)
+        elif param_free_norm_type == 'batch':
+            self.param_free_norm = nn.BatchNorm2d(norm_nc, affine=False)
+        else:
+            raise ValueError('%s is not a recognized param-free norm type in SPADE'
+                             % param_free_norm_type)
+
+        # The dimension of the intermediate embedding space. Yes, hardcoded.
+        nhidden = 128
+
+        pw = ks // 2
+        self.mlp_shared = nn.Sequential(
+            nn.Conv2d(label_nc, nhidden, kernel_size=ks, padding=pw),
+            nn.ReLU()
+        )
+        self.mlp_gamma = nn.Conv2d(nhidden, norm_nc, kernel_size=ks, padding=pw)
+        self.mlp_beta = nn.Conv2d(nhidden, norm_nc, kernel_size=ks, padding=pw)
+
+    def forward(self, x, segmap):
+
+        # Part 1. generate parameter-free normalized activations
+        normalized = self.param_free_norm(x)
+
+        # Part 2. produce scaling and bias conditioned on semantic map
+        segmap = F.interpolate(segmap, size=x.size()[2:], mode='nearest')
+        actv = self.mlp_shared(segmap)
+        gamma = self.mlp_gamma(actv)
+        beta = self.mlp_beta(actv)
+
+        # apply scale and bias
+        out = normalized * (1 + gamma) + beta
+
+        return out
+
+
+# ResNet block that uses SPADE.
+# It differs from the ResNet block of pix2pixHD in that
+# it takes in the segmentation map as input, learns the skip connection if necessary,
+# and applies normalization first and then convolution.
+# This architecture seemed like a standard architecture for unconditional or
+# class-conditional GAN architecture using residual block.
+# The code was inspired from https://github.com/LMescheder/GAN_stability.
+class SPADEResnetBlock(nn.Module):
+    def __init__(self, fin, fout, seg_classes=30):
+        super().__init__()
+        # Attributes
+        self.learned_shortcut = (fin != fout)
+        fmiddle = min(fin, fout)
+
+        # create conv layers
+        self.conv_0 = nn.Conv2d(fin, fmiddle, kernel_size=3, padding=1)
+        self.conv_1 = nn.Conv2d(fmiddle, fout, kernel_size=3, padding=1)
+        if self.learned_shortcut:
+            self.conv_s = nn.Conv2d(fin, fout, kernel_size=1, bias=False)
+
+        self.conv_0 = spectral_norm(self.conv_0)
+        self.conv_1 = spectral_norm(self.conv_1)
+        if self.learned_shortcut:
+            self.conv_s = spectral_norm(self.conv_s)
+
+        # define normalization layers
+        spade_config_str = 'spadesyncbatch3x3'
+        self.norm_0 = SPADE(spade_config_str, fin, seg_classes)
+        self.norm_1 = SPADE(spade_config_str, fmiddle, seg_classes)
+        if self.learned_shortcut:
+            self.norm_s = SPADE(spade_config_str, fin, seg_classes)
+
+    # note the resnet block with SPADE also takes in |seg|,
+    # the semantic segmentation map as input
+    def forward(self, x, seg):
+        x_s = self.shortcut(x, seg)
+
+        dx = self.conv_0(self.actvn(self.norm_0(x, seg)))
+        dx = self.conv_1(self.actvn(self.norm_1(dx, seg)))
+
+        out = x_s + dx
+
+        return out
+
+    def shortcut(self, x, seg):
+        if self.learned_shortcut:
+            x_s = self.conv_s(self.norm_s(x, seg))
+        else:
+            x_s = x
+        return x_s
+
+    def actvn(self, x):
+        return F.leaky_relu(x, 2e-1)
+
+
+class AttentionTransferLayer(nn.Module):
+    def __init__(self):
+        super(AttentionTransferLayer, self).__init__()
+        self.sig = nn.Sigmoid()
+
+    def forward(self, left_inp, right_inp):
+        x = self.sig(left_inp)
+        x = x * right_inp
+        x = x + right_inp
+        return x
