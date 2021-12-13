@@ -9,11 +9,12 @@ import pickle
 
 class CityscapesDataset(Dataset):
     # Load from mat
-    def __init__(self, data_file, prefix, resize=[512, 256], gray=True, transform=None):
+    def __init__(self, data_file, prefix, resize=[512, 256], seg_var='seg_res', gray=True, transform=None):
         self.prefix = prefix
         self.data_paths = self._read_data_file(data_file)
         self.gray = gray
         self.resize = resize
+        self.seg_var = seg_var
 #         self.transform = transform
     def _read_data_file(self, data_file_path):
 
@@ -30,14 +31,9 @@ class CityscapesDataset(Dataset):
     def __getitem__(self, index):
         file = self.data_paths[index]
 
-        # TODO: map semantic label to 1 hot indexing
-        # TODO: resize mapped semantic labels
-        # TODO: Check edge value range and channels
-
         # Read segmentation image
-        im = imageio.imread(self.prefix + '/segs/' + file)
-        seg = im.astype(np.float32)
-        seg[np.isnan(seg)] = 0
+        seg = sio.loadmat(self.prefix + '/segs/' + file)[self.seg_var]
+        seg = seg.transpose((2, 0, 1))
 
         # Read colour image
         im = imageio.imread(self.prefix + '/colour/' + file)
