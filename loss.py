@@ -111,3 +111,21 @@ class VGGLoss(nn.Module):
         for i in range(len(x_vgg)):
             loss += self.weights[i] * self.criterion(x_vgg[i], y_vgg[i].detach())
         return loss
+    
+    
+    
+# GAN feature loss
+class FeatLoss(nn.Module):
+    def __init__(self):
+        self.criterionFeat = torch.nn.L1Loss()
+        self.lambda_feat = 10.0
+    def forward(self, pred_fake, pred_real):
+        GAN_Feat_loss = self.FloatTensor(1).fill_(0)
+        for i in range(num_D):  # for each discriminator
+            # last output is the final prediction, so we exclude it
+            num_intermediate_outputs = len(pred_fake[i]) - 1
+            for j in range(num_intermediate_outputs):  # for each layer output
+                unweighted_loss = self.criterionFeat(
+                    pred_fake[i][j], pred_real[i][j].detach())
+                GAN_Feat_loss += unweighted_loss * self.lambda_feat / num_D
+        return GAN_Feat_loss
