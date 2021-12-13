@@ -51,8 +51,7 @@ class NLayerDiscriminator(BaseNetwork):
         kw = 4
         padw = int(np.ceil((kw - 1.0) / 2))
         nf = 64
-	n_layers_D = 3 # todo parser default says 4 but issue/36 says 3 
-        # input_nc = self.compute_D_input_nc()
+	n_layers_D = 3 # parser default is 4
 
         norm_layer = get_nonspade_norm_layer('spectralinstance')
         sequence = [[nn.Conv2d(in_channels, nf, kernel_size=kw, stride=2, padding=padw),
@@ -72,20 +71,6 @@ class NLayerDiscriminator(BaseNetwork):
         # We divide the layers into groups to extract intermediate layer outputs
         for n in range(len(sequence)):
             self.add_module('model' + str(n), nn.Sequential(*sequence[n]))
-
-    def compute_D_input_nc(self):
-	label_nc = 182
-	edge_nc = 1
-        output_nc = 3
-        contain_dontcare_label = True
-        no_instance = False
-		
-        input_nc = label_nc + output_nc
-        if contain_dontcare_label:
-            input_nc += 1
-        if not no_instance:
-            input_nc += 1
-        return input_nc
 
     def forward(self, input):
         results = [input]
