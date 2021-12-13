@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from architectures.ResNet import resnet18 as resnet
-from architectures.SPADE import SPADEResnetBlock, AttentionTransferLayer
+from architectures.SPADE import SPADEResnetBlock, AttentionTransferLayer, BaseNetwork
 
 
 def printTensorList(data):
@@ -21,7 +21,7 @@ def printTensorList(data):
         print(']')
 
 
-class EdgeGuidedNetwork(nn.Module):
+class EdgeGuidedNetwork(BaseNetwork):
     def __init__(self, seg_classes=30):
         super(EdgeGuidedNetwork, self).__init__()
         nf = 64
@@ -91,8 +91,9 @@ class EdgeGuidedNetwork(nn.Module):
 if __name__ == '__main__':
     seg_classes = 30
     net = EdgeGuidedNetwork(seg_classes)
+    net.init_weights()
     print(net)
-    seg = torch.Tensor(4, seg_classes, 256, 256)
+    seg = torch.Tensor(4, seg_classes, 512, 256)
     out = net(seg)
     printTensorList(out)
 
