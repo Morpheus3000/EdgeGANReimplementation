@@ -135,10 +135,16 @@ if __name__ == '__main__':
     out = net(seg)
     I_e_d, I_d, I_dd = out['edge'], out['image_init'], out['image']
     
+    I_e = torch.randn_like(I_e_d)
+    I = torch.randn_like(I_d)
+	
     # discriminator part
     D_edge = MultiscaleDiscriminator(seg_classes+1) # if edgemap channel is 1
     D_image = MultiscaleDiscriminator(seg_classes+3)
-    d_edge_fake = D_edge(torch.cat([seg, I_e_d], dim=1))
-    d_image_fake1 = D_image(torch.cat([seg, I_d], dim=1))
-    d_image_fake2 = D_image(torch.cat([seg, I_dd], dim=1))
+    pred_edge_fake = D_edge(torch.cat([seg, I_e_d], dim=1))
+    pred_image_fake1 = D_image(torch.cat([seg, I_d], dim=1))
+    pred_image_fake2 = D_image(torch.cat([seg, I_dd], dim=1))
+    pred_edge_real = D_edge(torch.cat([seg, I_e], dim=1))
+    pred_image_real = D_image(torch.cat([seg, I], dim=1))
+    
     # printTensorList(out)
