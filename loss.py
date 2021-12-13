@@ -9,14 +9,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 from models.networks.architecture import VGG19
 
-
 # Defines the GAN loss which uses either LSGAN or the regular GAN.
 # When LSGAN is used, it is basically same as MSELoss,
 # but it abstracts away the need to create the target label tensor
 # that has the same size as the input
 class GANLoss(nn.Module):
     def __init__(self, gan_mode, target_real_label=1.0, target_fake_label=0.0,
-                 tensor=torch.FloatTensor, opt=None):
+                 tensor=torch.FloatTensor):
         super(GANLoss, self).__init__()
         self.real_label = target_real_label
         self.fake_label = target_fake_label
@@ -25,7 +24,6 @@ class GANLoss(nn.Module):
         self.zero_tensor = None
         self.Tensor = tensor
         self.gan_mode = gan_mode
-        self.opt = opt
         if gan_mode == 'ls':
             pass
         elif gan_mode == 'original':
