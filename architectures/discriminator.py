@@ -122,3 +122,23 @@ def get_nonspade_norm_layer(norm_type='instance'):
         return nn.Sequential(layer, norm_layer)
 
     return add_norm_layer
+
+
+if __name__ == '__main__':
+    # generate
+    from Network import *
+    seg_classes = 30
+    net = EdgeGuidedNetwork(seg_classes)
+    net.init_weights()
+    # print(net)
+    seg = torch.Tensor(4, seg_classes, 512, 256)
+    out = net(seg)
+    I_e_d, I_d, I_dd = out['edge'], out['image_init'], out['image']
+    
+    # discriminator part
+    D_edge = MultiscaleDiscriminator(seg_classes+1) # if edgemap channel is 1
+    D_image = MultiscaleDiscriminator(seg_classes+3)
+    d_edge_fake = D_edge(torch.cat([seg, I_e_d], dim=1))
+    d_image_fake1 = D_image(torch.cat([seg, I_d], dim=1))
+    d_image_fake2 = D_image(torch.cat([seg, I_dd], dim=1))
+    # printTensorList(out)
