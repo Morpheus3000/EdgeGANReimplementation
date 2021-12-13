@@ -121,6 +121,7 @@ class FeatLoss(nn.Module):
         self.lambda_feat = 10.0
     def forward(self, pred_fake, pred_real):
         GAN_Feat_loss = self.FloatTensor(1).fill_(0)
+        num_D = len(pred_fake)
         for i in range(num_D):  # for each discriminator
             # last output is the final prediction, so we exclude it
             num_intermediate_outputs = len(pred_fake[i]) - 1
