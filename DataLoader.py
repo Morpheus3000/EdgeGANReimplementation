@@ -54,7 +54,7 @@ class CityscapesDataset(Dataset):
 
         image_dict = {'rgb': rgb,
                       'edge': edge,
-                      'sem': sem}
+                      'sem': seg}
         return image_dict, self.data_paths[index]
 
 

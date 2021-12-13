@@ -20,6 +20,8 @@ torch.backends.cudnn.benchmark = True
 
 cudaDevice = ''
 
+# TODO: Add Criterions
+
 if len(cudaDevice) < 1:
     if torch.cuda.is_available():
         device = torch.device('cuda')
@@ -38,9 +40,6 @@ ExperimentName = 'EdgeGANVanilla'
 outdir = 'OutputJpeg%s' % ExperimentName.replace(' ', '_')
 os.makedirs(outdir, exist_ok=True)
 
-visuals = 'Visuals%s' % ExperimentName.replace(' ', '_')
-os.makedirs(visuals, exist_ok=True)
-
 modelSaveLoc = outdir + '/snapshot_%d.t7'
 logTrain = '%s/LogTrain.str' % outdir
 logTest = '%s/LogTest.str' % outdir
@@ -49,7 +48,7 @@ data_root = '/ssdstore///v4/Processed/Intrinsics/'
 train_list = '/home//Experiments//v4/train_files.txt'
 test_list = '/home//Experiments//v4/test_files.txt'
 
-seg_classes = 30
+seg_classes = 34
 batch_size = 4
 nthreads = 4
 if batch_size < nthreads:
@@ -58,11 +57,13 @@ max_epochs = 200 # 250
 displayIter = 10
 saveIter = 50000
 
-# learningRate = 0.01
+lambda_c = 1
+lambda_f = 10
+lambda_p = 10
+
 learningRate = 2e-4
-# learningRate = 2e-4
-beta = 0.5
-# weightDecay = 1e-5
+beta_1 = 0
+beta_2 = 0.999
 
 done = u'\u2713'
 
@@ -80,10 +81,7 @@ net.to(device)
 
 print(done)
 print('[I] STATUS: Initiate optimizer...', end='')
-# optimizer = torch.optim.Adadelta(net.parameters(), lr=learningRate,
-#                                  weight_decay=weightDecay)
-optimizer = torch.optim.Adam(net.parameters(), lr=learningRate, betas=(beta,
-                                                                       0.999))
+optimizer = torch.optim.Adam(net.parameters(), betas=(beta_1, beta_2))
 
 print(done)
 print('[I] STATUS: Initiate Criterions and transfer to device...', end='')
@@ -130,38 +128,13 @@ def Train(net, epoch_count):
     epoch_count += 1
     t = tqdm(enumerate(trainLoader), total=batches_train, leave=False)
 
-    loss_albedo = np.empty(batches_train)
-    loss_unrefined_albedo = np.empty(batches_train)
-    loss_unrefined_shading = np.empty(batches_train)
-    loss_shading = np.empty(batches_train)
-    loss_pred_recon = np.empty(batches_train)
+    loss_GAN = np.empty(batches_train)
+    loss_feat = np.empty(batches_train)
+    loss_percep = np.empty(batches_train)
 
-    loss_pred_edge = np.empty(batches_train)
-    loss_pred_edge_64 = np.empty(batches_train)
-    loss_pred_edge_128 = np.empty(batches_train)
-
-    # Perception on albedo 0.05
-    loss_percep_albedo = np.empty(batches_train)
-
-    # DSSIM on albedo 0.5
-    loss_dssim_albedo = np.empty(batches_train)
-
-    # DSSIM on shading 0.5
-    loss_dssim_shading = np.empty(batches_train)
-
-    loss_albedo[:] = np.nan
-    loss_unrefined_albedo[:] = np.nan
-    loss_unrefined_shading[:] = np.nan
-    loss_shading[:] = np.nan
-    loss_pred_recon[:] = np.nan
-
-    loss_pred_edge[:] = np.nan
-    loss_pred_edge_64[:] = np.nan
-    loss_pred_edge_128[:] = np.nan
-
-    loss_percep_albedo[:] = np.nan
-    loss_dssim_albedo[:] = np.nan
-    loss_dssim_shading[:] = np.nan
+    loss_GAN[:] = np.nan
+    loss_feat[:] = np.nan
+    loss_percep[:] = np.nan
 
     Epoch_time = time.time()
 
@@ -170,214 +143,74 @@ def Train(net, epoch_count):
         images, _ = data
 
         # rgb = Variable(images[0]).to(device)
-        alb = Variable(images['albedo']).to(device)
-        shd = Variable(images['shading']).to(device)
-        deln = Variable(images['deln']).to(device)
-        # mask = Variable(torch.ones(batch_size, 256, 256)).to(device)
-        mask = Variable(images['mask']).to(device)
-        shd = shd.unsqueeze(1)
-        deln[deln <= 0.3] = 0
-        [b, c, w, h] = shd.shape
-        _, _, _, alb_edges, _, _ = edger(alb)
-        _, _, _, illum_edges, _, _ = edger(deln)
-
-        alb_edges = alb_edges.detach()
-        illum_edges = illum_edges.detach()
-
-        # illum_edges = shd_edges - alb_edges
-
-        alb_edges_64 = F.interpolate(alb_edges, size=64)
-        alb_edges_128 = F.interpolate(alb_edges, size=128)
-
-        alb_edges_64 = alb_edges_64.detach()
-        alb_edges_128 = alb_edges_128.detach()
-
-        # edges = edges.to(device)
-
-        illum_edges_64 = F.interpolate(illum_edges, size=64)
-        illum_edges_128 = F.interpolate(illum_edges, size=128)
-
-        illum_edges_64 = illum_edges_64.detach()
-        illum_edges_128 = illum_edges_128.detach()
-
-        # Expand to save copies
-        # shd = shd.unsqueeze(1).expand(b, 3, w, h)
-        # mask = mask.unsqueeze(1).expand(b, 3, w, h)
-
-        rgb = torch.mul(alb, shd.expand(b, 3, w, h))
-
+        seg = Variable(images['sem']).to(device)
+        edge = Variable(images['edge']).to(device)
+        rgb = Variable(images['rgb']).to(device)
+        
         optimizer.zero_grad()
 
         net_time = time.time()
-        pred = net(rgb)
+        pred = net(seg)
 
         # Pred gt dictionary for the criterion
-        targets = {'reflectance': alb,
-                   'shading': shd,
-                   'reflec_edge': alb_edges,
-                   'reflec_edge_64': alb_edges_64,
-                   'reflec_edge_128': alb_edges_128,
-                   'illum_edge': illum_edges,
-                   'illum_edge_64': illum_edges_64,
-                   'illum_edge_128': illum_edges_128,
+        targets = {'edge': edge,
                    'rgb': rgb}
 
         loss = criterion(pred, targets, mask)
-        loss_alb = loss['reflectance']
-        loss_un_alb = loss['unrefined_reflec']
-        loss_un_shd = loss['unrefined_shd']
-        loss_shd = loss['shading']
-        loss_recon = loss['recon']
-        loss_reflec_edge = loss['reflec_edge']
-        loss_reflec_edge_64 = loss['reflec_edge_64']
-        loss_reflec_edge_128 = loss['reflec_edge_128']
-        loss_illum_edge = loss['illum_edge']
-        loss_illum_edge_64 = loss['illum_edge_64']
-        loss_illum_edge_128 = loss['illum_edge_128']
+        gan_loss = loss['gan']
+        feat_loss = loss['feat']
+        percep_loss = loss['percep']
 
-        # Percep Loss
-        alb_percep = percep(pred['reflectance'], targets['reflectance'])
-
-        # DSSIM Loss
-        alb_dssim = dssim(pred['reflectance'], targets['reflectance'])
-        shd_dssim = dssim(pred['shading'], targets['shading'])
-
-        total_reflec_edge_loss = loss_reflec_edge + loss_reflec_edge_64 + loss_reflec_edge_128
-        total_illum_edge_loss = loss_illum_edge + loss_illum_edge_64 + loss_illum_edge_128
-        total_edge_loss = total_reflec_edge_loss + total_illum_edge_loss
-
-        total_unrefined_loss = loss_un_alb + loss_un_shd
-
-        total_loss = loss_alb + loss_shd + loss_recon + (0.5 *
-                                                         total_unrefined_loss) +\
-                0.4 * total_edge_loss + 0.05 * alb_percep +\
-                0.4 * alb_dssim +  0.4 * shd_dssim
+        total_loss = lambda_c * gan_loss +\
+                lambda_f * feat_loss +\
+                lambda_p * percep_loss
 
         total_loss.backward()
         optimizer.step()
         net_timed = time.time() - net_time
 
-        loss_albedo[i] = loss_alb.cpu().detach().numpy()
-        loss_unrefined_albedo[i] = loss_un_alb.cpu().detach().numpy()
-        loss_unrefined_shading[i] = loss_un_shd.cpu().detach().numpy()
-        loss_shading[i] = loss_shd.cpu().detach().numpy()
-        loss_pred_recon[i] = loss_recon.cpu().detach().numpy()
-        loss_pred_edge[i] = loss_reflec_edge.cpu().detach().numpy()
-        loss_pred_edge_64[i] = loss_reflec_edge_64.cpu().detach().numpy()
-        loss_pred_edge_128[i] = loss_reflec_edge_128.cpu().detach().numpy()
-        loss_percep_albedo[i] = alb_percep.cpu().detach().numpy()
-        loss_dssim_albedo[i] = alb_dssim.cpu().detach().numpy()
-        loss_dssim_shading[i] = shd_dssim.cpu().detach().numpy()
+        loss_GAN[i] = lambda_c * gan_loss.cpu().detach().numpy()
+        loss_feat[i] = lambda_f * feat_loss.cpu().detach().numpy()
+        loss_percep[i] = lambda_p * percep_loss.cpu().detach().numpy()
 
         if iter_count % saveIter == 0:
-            for j in range(batch_size):
-                support.dumpOutputs(visuals, [pred['reflectance'][j, :, :, :] * mask[j, :, :, :],
-                             pred['shading'][j, :, :, :].expand(3, w, h) *\
-                             mask[j, :, :, :],
-                             pred['reflec_edge'][j, :, :, :]],
-                            gts=[rgb[j, :, :, :], alb[j, :, :, :],
-                             shd[j, :, :, :].expand(3, w, h)], num=j + 1,
-                                   iteration=iter_count)
             support.saveModels(net, optimizer, iter_count, modelSaveLoc % iter_count)
             tqdm.write('[!] Model Saved!')
 
-        if iter_count % displayIter == 0:
-            trainLogger.write('%f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %d\n' % (loss_albedo[i],
-                                                            loss_unrefined_albedo[i],
-                                                            loss_shading[i],
-                                                            loss_pred_recon[i],
-                                                            loss_pred_edge[i],
-                                                            loss_pred_edge_64[i],
-                                                            loss_pred_edge_128[i],
-                                                            loss_percep_albedo[i],
-                                                            loss_dssim_albedo[i],
-                                                            loss_dssim_shading[i],
-                                                            iter_count))
+        t.set_description('[Iter %d] GAN: %0.4f, Feature: %0.4f, Percep: %0.4f,'
+                          ' Epoch: %d, Time: %0.4f' % (
+                              iter_count, loss_pred_edge[i],
+                              loss_GAN[i],
+                              loss_feat[i],
+                              loss_percep[i],
+                              epoch_count, net_timed
+                          ))
 
-        t.set_description('[Iter %d] Edge: %0.4f, Unref Reflec: %0.4f, Unref '
-                          'Shd: %0.4f, Reflec:'
-                          ' %0.4f, Shd: %0.4f, Recon: %0.4f, Percep: %0.4f,'
-                          ' DSSIM-Alb: %0.4f, DSSIM-Shd: %0.4f, Epoch: %d, Time: '
-                          '%0.4f' % (iter_count, loss_pred_edge[i],
-                                     # loss_pred_edge_64[i],
-                                     # loss_pred_edge_128[i],
-                           loss_unrefined_albedo[i],
-                           loss_unrefined_shading[i],
-                           loss_albedo[i],
-                           loss_shading[i],
-                           loss_pred_recon[i],
-                           0.05 * loss_percep_albedo[i],
-                           0.5 * loss_dssim_albedo[i],
-                           0.5 * loss_dssim_shading[i],
-                           epoch_count, net_timed))
-
-
-    avg_loss_albedo, avg_loss_shading = np.nanmean(loss_albedo),\
-                                        np.nanmean(loss_shading)
-
-    avg_loss_unref_albedo, avg_loss_edge = np.nanmean(loss_unrefined_albedo),\
-                                        np.nanmean(loss_pred_edge)
-    avg_loss_unref_shading = np.nanmean(loss_unrefined_shading)
-
-    avg_loss_edge_64, avg_loss_edge_128  = np.nanmean(loss_pred_edge_64),\
-                                        np.nanmean(loss_pred_edge_128)
-
-    avg_loss_recon = np.nanmean(loss_pred_recon)
-
-    avg_loss_percep = np.nanmean(loss_percep_albedo)
-    avg_loss_dssim_alb = np.nanmean(loss_dssim_albedo)
-    avg_loss_dssim_shd = np.nanmean(loss_dssim_shading)
+    avg_gan_loss = np.nanmean(loss_GAN)
+    avg_feat_loss = np.nanmean(loss_feat)
+    avg_percep_loss = np.nanmean(loss_percep)
 
     Epoch_timed = time.time() - Epoch_time
     print('[I] STATUS: Exp: %s: Epoch %d trained! Time taken: %0.2f minutes' %
                                                     (ExperimentName, epoch_count,
                                                                Epoch_timed / 60))
 
-    return avg_loss_albedo, avg_loss_shading, avg_loss_recon,\
-            avg_loss_unref_albedo, avg_loss_edge, avg_loss_percep,\
-            avg_loss_dssim_alb, avg_loss_dssim_shd, avg_loss_edge_64,\
-            avg_loss_edge_128, avg_loss_unref_shading
+    return avg_gan_loss, avg_feat_loss, avg_percep_loss
 
 iter_count = 0
-# print('[I] STATUS: Starting Pre-flight sub-systems checks!')
-# 
-# support.run_preflight_tests(net, {'inputs': torch.Tensor(batch_size, 3, 256,
-#                                                          256).to(device),
-#                                   'dest': visuals},
-#                             {'optimizer': optimizer,
-#                              'dest': outdir})
 
 print('[*] Beginning Training:')
 print('\tMax Epoch: ', max_epochs)
 print('\tLogging iter: ', displayIter)
 print('\tSaving iter: ', saveIter)
 print('\tModels Dumped at: ', outdir)
-print('\tVisuals Dumped at: ', visuals)
 print('\tExperiment Name: ', ExperimentName)
 
 for i in range(max_epochs):
-    avg_alb_loss, avg_shd_loss, avg_loss_recon, avg_loss_unref_albedo,\
-            avg_loss_edge, avg_loss_percep, avg_loss_dssim_alb,\
-            avg_loss_dssim_shd, avg_loss_edge_64, avg_loss_edge_128,\
-    avg_loss_unref_shading = Train(net, i)
-    print('[*] Epoch: %d: Edge: %0.4f, Unrefined Reflec: %0.4f, Unrefined Shd:'
-          ' %0.4f, Reflec: %0.4f,'
-          ' Shading: %0.4f, Recon: %0.4f, Perception: %0.4f, DSSIM-Alb: %0.4f,'
-          ' DSSIM-Shd: %0.4f' % (i + 1, avg_loss_edge,
-                                             # avg_loss_edge_64,
-                                             # avg_loss_edge_128,
-                                             avg_loss_unref_albedo,
-                                             avg_loss_unref_shading,
-                                             avg_alb_loss,
-                                             avg_shd_loss,
-                                             avg_loss_recon,
-                                             avg_loss_percep,
-                                             avg_loss_dssim_alb,
-                                             avg_loss_dssim_shd,
-                              ))
+    avg_gan_loss, avg_feat_loss, avg_percep_loss = Train(net, i)
+    print('[*] Epoch: %d - GAN: %0.4f, Feature: %0.4f, Percep: %0.4f,' % (
+        i + 1, avg_gan_loss, avg_feat_loss, avg_percep_loss
+    ))
 support.saveModels(net, optimizer, iter_count, modelSaveLoc % iter_count)
 trainLogger.close()
 testLogger.close()
-
-
-
