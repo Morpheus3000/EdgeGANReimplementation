@@ -30,6 +30,7 @@ class CityscapesDataset(Dataset):
 
         # Read segmentation image
         seg = sio.loadmat(self.prefix + '/segs/' + file + '.mat')[self.seg_var]
+        seg = seg.astype(np.float32)
         seg = seg.transpose((2, 0, 1))
 
         # Read colour image
@@ -46,8 +47,6 @@ class CityscapesDataset(Dataset):
         edge = im.astype(np.float32)
         edge[np.isnan(edge)] = 0
         edge = cv2.resize(edge, self.resize)
-
-        edge = edge.transpose((2, 0, 1))
 
         image_dict = {'rgb': rgb,
                       'edge': edge,

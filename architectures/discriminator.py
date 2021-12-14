@@ -10,17 +10,20 @@ import torch.nn.functional as F
 from architectures.SPADE import BaseNetwork
 from synchronised_batch_norm.batchnorm import SynchronizedBatchNorm2d
 import torch.nn.utils.spectral_norm as spectral_norm
+from architectures.SPADE import BaseNetwork
 
 class MultiscaleDiscriminator(BaseNetwork):
-    def __init__(self, in_channels=182+1+3): 
+    def __init__(self, in_channels=34+1): 
         super().__init__()
         num_D = 2
+        self.in_channels = in_channels
         for i in range(num_D):
             subnetD = self.create_single_discriminator()
             self.add_module('discriminator_%d' % i, subnetD)
 
     def create_single_discriminator(self):
-        netD = NLayerDiscriminator(in_channels)
+        netD = NLayerDiscriminator(self.in_channels)
+        return netD
 
     def downsample(self, input):
         return F.avg_pool2d(input, kernel_size=3,
@@ -31,11 +34,11 @@ class MultiscaleDiscriminator(BaseNetwork):
     # The final result is of size opt.num_D x opt.n_layers_D
     def forward(self, input):
         result = []
-        get_intermediate_features = True
+        # get_intermediate_features = True
         for name, D in self.named_children():
             out = D(input)
-            if not get_intermediate_features:
-                out = [out]
+            # if not get_intermediate_features:
+            #     out = [out]
             result.append(out)
             input = self.downsample(input)
 
@@ -51,9 +54,9 @@ class NLayerDiscriminator(BaseNetwork):
         kw = 4
         padw = int(np.ceil((kw - 1.0) / 2))
         nf = 64
-	n_layers_D = 3 # parser default is 4
+        n_layers_D = 3 # parser default is 4
 
-        norm_layer = get_nonspade_norm_layer('spectralinstance')
+        norm_layer = get_nonspade_norm_layer()
         sequence = [[nn.Conv2d(in_channels, nf, kernel_size=kw, stride=2, padding=padw),
                      nn.LeakyReLU(0.2, False)]]
 
@@ -87,7 +90,7 @@ class NLayerDiscriminator(BaseNetwork):
 
 # Returns a function that creates a normalization function
 # that does not condition on semantic map
-def get_nonspade_norm_layer(norm_type='instance'):
+def get_nonspade_norm_layer():
     # helper function to get # output channels of the previous layer
     def get_out_channel(layer):
         if hasattr(layer, 'out_channels'):
@@ -96,13 +99,7 @@ def get_nonspade_norm_layer(norm_type='instance'):
 
     # this function will be returned
     def add_norm_layer(layer):
-        nonlocal norm_type
-        if norm_type.startswith('spectral'):
-            layer = spectral_norm(layer)
-            subnorm_type = norm_type[len('spectral'):]
-
-        if subnorm_type == 'none' or len(subnorm_type) == 0:
-            return layer
+        layer = spectral_norm(layer)
 
         # remove bias in the previous layer, which is meaningless
         # since it has no effect after normalization
@@ -110,15 +107,7 @@ def get_nonspade_norm_layer(norm_type='instance'):
             delattr(layer, 'bias')
             layer.register_parameter('bias', None)
 
-        if subnorm_type == 'batch':
-            norm_layer = nn.BatchNorm2d(get_out_channel(layer), affine=True)
-        elif subnorm_type == 'sync_batch':
-            norm_layer = SynchronizedBatchNorm2d(get_out_channel(layer), affine=True)
-        elif subnorm_type == 'instance':
-            norm_layer = nn.InstanceNorm2d(get_out_channel(layer), affine=False)
-        else:
-            raise ValueError('normalization layer %s is not recognized' % subnorm_type)
-
+        norm_layer = nn.InstanceNorm2d(get_out_channel(layer), affine=False)
         return nn.Sequential(layer, norm_layer)
 
     return add_norm_layer

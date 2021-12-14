@@ -62,8 +62,8 @@ lambda_c = 1
 lambda_f = 10
 lambda_p = 10
 
-learningRate = 1e-3
-beta_1 = 0
+learningRate = 2e-4
+beta_1 = 0.5
 beta_2 = 0.999
 
 done = u'\u2713'
@@ -82,7 +82,7 @@ net.to(device)
 
 print(done)
 print('[I] STATUS: Initiate optimizer...', end='')
-optimizer = torch.optim.Adam(net.parameters(), lr=learningRate, betas=(beta_1, beta_2))
+optimizer = torch.optim.Adam(net.parameters(), lr=learningRate / 2, betas=(beta_1, beta_2))
 scheduler = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=1,
                                               end_factor=0, total_iters=100,
                                               verbose=True)
@@ -150,17 +150,13 @@ def Train(net, epoch_count):
         seg = Variable(images['sem']).to(device)
         edge = Variable(images['edge']).to(device)
         rgb = Variable(images['rgb']).to(device)
-        
+
         optimizer.zero_grad()
 
         net_time = time.time()
         pred = net(seg)
 
-        # Pred gt dictionary for the criterion
-        targets = {'edge': edge,
-                   'rgb': rgb}
-
-        loss = criterion(pred, targets, mask)
+        loss = criterion(pred, images, mask)
         gan_loss = loss['gan']
         feat_loss = loss['feat']
         percep_loss = loss['percep']
