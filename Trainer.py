@@ -54,6 +54,7 @@ nthreads = 4
 if batch_size < nthreads:
     nthreads = batch_size
 max_epochs = 200 # 250
+lr_mod_epoch = 100
 displayIter = 10
 saveIter = 50000
 
@@ -61,7 +62,7 @@ lambda_c = 1
 lambda_f = 10
 lambda_p = 10
 
-learningRate = 2e-4
+learningRate = 1e-3
 beta_1 = 0
 beta_2 = 0.999
 
@@ -81,7 +82,10 @@ net.to(device)
 
 print(done)
 print('[I] STATUS: Initiate optimizer...', end='')
-optimizer = torch.optim.Adam(net.parameters(), betas=(beta_1, beta_2))
+optimizer = torch.optim.Adam(net.parameters(), lr=learningRate, betas=(beta_1, beta_2))
+scheduler = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=1,
+                                              end_factor=0, total_iters=100,
+                                              verbose=True)
 
 print(done)
 print('[I] STATUS: Initiate Criterions and transfer to device...', end='')
@@ -194,6 +198,8 @@ def Train(net, epoch_count):
     print('[I] STATUS: Exp: %s: Epoch %d trained! Time taken: %0.2f minutes' %
                                                     (ExperimentName, epoch_count,
                                                                Epoch_timed / 60))
+    if epoch_count >= lr_mod_epoch - 1:
+        scheduler.step()
 
     return avg_gan_loss, avg_feat_loss, avg_percep_loss
 
