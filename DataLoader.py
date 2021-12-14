@@ -1,21 +1,19 @@
 from torch.utils.data import Dataset
 import numpy as np
 import imageio
-import pathlib
 import scipy.io as sio
 import cv2
-import pickle
 
 
 class CityscapesDataset(Dataset):
-    # Load from mat
-    def __init__(self, data_file, prefix, resize=[512, 256], seg_var='seg_res', gray=True, transform=None):
+    def __init__(self, data_file, prefix, resize=[512, 256], seg_var='seg_res',
+                 gray=True):
         self.prefix = prefix
         self.data_paths = self._read_data_file(data_file)
         self.gray = gray
         self.resize = resize
         self.seg_var = seg_var
-#         self.transform = transform
+
     def _read_data_file(self, data_file_path):
 
         filer = open(data_file_path, 'r')
@@ -26,17 +24,16 @@ class CityscapesDataset(Dataset):
 
     def __len__(self):
         return len(self.data_paths)
-        # return 10
 
     def __getitem__(self, index):
         file = self.data_paths[index]
 
         # Read segmentation image
-        seg = sio.loadmat(self.prefix + '/segs/' + file)[self.seg_var]
+        seg = sio.loadmat(self.prefix + '/segs/' + file + '.mat')[self.seg_var]
         seg = seg.transpose((2, 0, 1))
 
         # Read colour image
-        im = imageio.imread(self.prefix + '/colour/' + file)
+        im = imageio.imread(self.prefix + '/colour/' + file + '.png')
         rgb = im.astype(np.float32)
         rgb[np.isnan(rgb)] = 0
         rgb = cv2.resize(rgb, self.resize)
@@ -45,7 +42,7 @@ class CityscapesDataset(Dataset):
         rgb = rgb.transpose((2, 0, 1))
 
         # Read edge image
-        im = imageio.imread(self.prefix + '/edge/' + file)
+        im = imageio.imread(self.prefix + '/edge/' + file + '.png')
         edge = im.astype(np.float32)
         edge[np.isnan(edge)] = 0
         edge = cv2.resize(edge, self.resize)
