@@ -74,7 +74,7 @@ print(done)
 print('[I] STATUS: Initiate Network and transfer to device...', end='')
 
 net = EdgeGuidedNetwork(seg_classes).to(device)
-net.init_weights()
+net.init_weights('xavier', 0.02)
 if torch.cuda.device_count() > 1:
     print("Let's use", torch.cuda.device_count(), "GPUs!...", end='')
     net = nn.DataParallel(net)

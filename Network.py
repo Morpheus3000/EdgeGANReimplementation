@@ -91,7 +91,7 @@ class EdgeGuidedNetwork(BaseNetwork):
 if __name__ == '__main__':
     seg_classes = 30
     net = EdgeGuidedNetwork(seg_classes)
-    net.init_weights()
+    net.init_weights('xavier', 0.02)
     print(net)
     seg = torch.Tensor(4, seg_classes, 512, 256)
     out = net(seg)
