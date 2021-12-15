@@ -3,24 +3,20 @@ import time
 
 from tqdm import tqdm
 import numpy as np
-import imageio
 
 import torch
 from torch.autograd import Variable
 import torch.nn as nn
-import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
 from Network import EdgeGuidedNetwork
 from DataLoader import CityscapesDataset
-# from Criterions import 
+from Criterions import MultiModalityDiscriminator
 from Utils import mor_utils
 
 torch.backends.cudnn.benchmark = True
 
 cudaDevice = ''
-
-# TODO: Add Criterions
 
 if len(cudaDevice) < 1:
     if torch.cuda.is_available():
@@ -58,9 +54,10 @@ lr_mod_epoch = 100
 displayIter = 10
 saveIter = 50000
 
-lambda_c = 1
-lambda_f = 10
-lambda_p = 10
+lambda_gan = 1
+lambda_feat = 10
+lambda_vgg = 10
+lambd = 2
 
 learningRate = 2e-4
 beta_1 = 0.5
@@ -89,9 +86,10 @@ scheduler = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=1,
 
 print(done)
 print('[I] STATUS: Initiate Criterions and transfer to device...', end='')
-criterion = ScaleInvMSEScaleClampedIllumEdge(0.95).to(device)
-dssim = SSIM(7, reduction='mean').to(device)
-percep = VGGPerceptualLoss().to(device)
+criterion = MultiModalityDiscriminator(
+    seg_classes=seg_classes, lambda_feat=lambda_feat, lambda_gan=lambda_gan,
+    lambda_vgg=lambda_vgg, lambd=lambd
+).to(device)
 
 print(done)
 print('[I] STATUS: Initiate Dataloaders...')
