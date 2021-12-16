@@ -30,25 +30,45 @@ class mor_utils:
         if isinstance(model, nn.DataParallel):
             checkpoint = {
                 'iters': iterations,
-                'model': model.module.state_dict(),
+                'model': {
+                    model['G'].module.state_dict(),
+                    model['D_e'].module.state_dict(),
+                    model['D_i'].module.state_dict(),
+                },
                 # 'model': model.module.to(cpu).state_dict(),
-                'optimizer': optims.state_dict()
+                'optimizer': {
+                    optims['G'].state_dict(),
+                    optims['D_e'].state_dict(),
+                    optims['D_i'].state_dict()
+                }
             }
         else:
             checkpoint = {
                 'iters': iterations,
-                'model': model.state_dict(),
+                'model': {
+                    model['G'].state_dict(),
+                    model['D_e'].state_dict(),
+                    model['D_i'].state_dict(),
+                },
                 # 'model': model.to(cpu).state_dict(),
-                'optimizer': optims.state_dict()
+                'optimizer': {
+                    optims['G'].state_dict(),
+                    optims['D_e'].state_dict(),
+                    optims['D_i'].state_dict()
+                }
             }
         torch.save(checkpoint, path)
         # model.to(self.device)
 
     def loadModels(self, model, path, optims=None, Test=True):
         checkpoint = torch.load(path)
-        model.load_state_dict(checkpoint['model'])
+        model['G'].load_state_dict(checkpoint['model']['G'])
+        model['D_e'].load_state_dict(checkpoint['model']['D_e'])
+        model['D_i'].load_state_dict(checkpoint['model']['D_i'])
         if not Test:
-            optims.load_state_dict(checkpoint['optimizer'])
+            optims['G'].load_state_dict(checkpoint['optimizer']['G'])
+            optims['D_e'].load_state_dict(checkpoint['optimizer']['D_e'])
+            optims['D_i'].load_state_dict(checkpoint['optimizer']['D_i'])
         return model, optims, checkpoint['iters']
 
     def dumpOutputs(self, vis, preds, gts=None, num=13, iteration=0,
@@ -109,7 +129,7 @@ class mor_utils:
             imageio.imwrite((vis + '/%s_pred_shd.png') % filename, pred_s)
 
     def dumpOutputs2(self, vis, preds, gts=None, num=13, iteration=0,
-                    filename='Out_%d_%d.png', Train=True):
+                     filename='Out_%d_%d.png', Train=True):
 
         if Train:
             """Function to Collage the predictions with the outputs. Expects a single
@@ -180,7 +200,7 @@ class mor_utils:
             imageio.imwrite((vis + '/%s_pred_unrefined.png') % filename, pred_u)
 
     def dumpOutputs3(self, vis, preds, gts=None, num=13, iteration=0,
-                    filename='Out_%d_%d.png', Train=True):
+                     filename='Out_%d_%d.png', Train=True):
 
         if Train:
             """Function to Collage the predictions with the outputs. Expects a single
