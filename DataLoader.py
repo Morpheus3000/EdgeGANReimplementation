@@ -49,6 +49,7 @@ class CityscapesDataset(Dataset):
         edge = im.astype(np.float32)
         edge[np.isnan(edge)] = 0
         edge = cv2.resize(edge, self.resize)
+        edge = edge[np.newaxis, :, :]
 
         image_dict = {'rgb': rgb,
                       'edge': edge,
