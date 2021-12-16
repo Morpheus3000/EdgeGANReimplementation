@@ -89,11 +89,26 @@ class EdgeGuidedNetwork(BaseNetwork):
 
 
 if __name__ == '__main__':
-    seg_classes = 30
-    net = EdgeGuidedNetwork(seg_classes)
+    cudaDevice = ''
+
+    if len(cudaDevice) < 1:
+        if torch.cuda.is_available():
+            device = torch.device('cuda')
+            print('[*] GPU Device selected as default execution device.')
+        else:
+            device = torch.device('cpu')
+            print('[X] WARN: No GPU Devices found on the system! Using the CPU. '
+                  'Execution maybe slow!')
+    else:
+        device = torch.device('cuda:%s' % cudaDevice)
+        print('[*] GPU Device %s selected as default execution device.' %
+              cudaDevice)
+
+    seg_classes = 34
+    net = EdgeGuidedNetwork(seg_classes).to(device)
     net.init_weights('xavier', 0.02)
     print(net)
-    seg = torch.Tensor(4, seg_classes, 512, 256)
+    seg = torch.Tensor(1, seg_classes, 512, 256).to(device)
     out = net(seg)
     printTensorList(out)
 
