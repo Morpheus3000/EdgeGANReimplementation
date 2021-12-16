@@ -6,7 +6,7 @@ import cv2
 
 
 class CityscapesDataset(Dataset):
-    def __init__(self, data_file, prefix, resize=[512, 256], seg_var='seg_res',
+    def __init__(self, data_file, prefix, resize=(512, 256), seg_var='seg_res',
                  gray=True):
         self.prefix = prefix
         self.data_paths = self._read_data_file(data_file)
@@ -29,8 +29,10 @@ class CityscapesDataset(Dataset):
         file = self.data_paths[index]
 
         # Read segmentation image
-        seg = sio.loadmat(self.prefix + '/segs/' + file + '.mat')[self.seg_var]
+        s = '_'.join(file.split('_')[:-1])
+        seg = sio.loadmat(self.prefix + '/segs/' + s + '_gtFine_labelIds.mat')[self.seg_var]
         seg = seg.astype(np.float32)
+        seg = cv2.resize(seg, self.resize, interpolation=cv2.INTER_NEAREST)
         seg = seg.transpose((2, 0, 1))
 
         # Read colour image
@@ -57,24 +59,21 @@ class CityscapesDataset(Dataset):
 if __name__ == '__main__':
     from torch.utils.data import DataLoader
     import time
+    from Network import printTensorList
 
-    data_root = ''
-    train_list = ''
-    test_list = ''
+    data_root = 'D:/Datasets/CityScapes/Cityscapes_train_full/'
+    train_list = 'D:/Datasets/CityScapes/Cityscapes_train_full/train_list.str'
 
     print('[+] Init dataloader')
-    testSet = CityscapesDataset(test_list, data_root)
+    testSet = CityscapesDataset(train_list, data_root)
     print('[+] Create workers')
     loader = DataLoader(testSet, batch_size=4, shuffle=True, num_workers=4,
                         pin_memory=True, drop_last=True)
     print('[*] Dataset size: ', len(loader))
     enu = enumerate(loader)
-    for i in range(20):
+    for i in range(5):
         a = time.time()
         i, (images, _) = next(enu)
         b = time.time()
-        alb = images['albedo']
-        shd = images['shading']
-        print(alb.max(), alb.min(), alb.mean())
-        print(shd.max(), shd.min(), shd.mean())
+        printTensorList(images)
         print('[*] Time taken: ', b - a)
