@@ -144,11 +144,10 @@ class FeatLoss(nn.Module):
 
 
 class MultiModalityDiscriminatorLoss(nn.Module):
-    def __init__(self, edge_discriminator, image_discriminator, seg_classes=34,
+    def __init__(self, discriminator, seg_classes=34,
                  lambda_feat=10, lambda_vgg=10, lambda_gan=1, lambd=2):
         super(MultiModalityDiscriminatorLoss, self).__init__()
-        self.edge_discriminator = edge_discriminator
-        self.image_discriminator = image_discriminator
+        self.discriminator = discriminator
         self.lambd = lambd
         self.crit_GAN = GANLoss('original')
         self.crit_Feat = torch.nn.L1Loss()
@@ -159,8 +158,7 @@ class MultiModalityDiscriminatorLoss(nn.Module):
 
     def to(self, device=None):
         self.device = device
-        self.edge_discriminator.to(device)
-        self.image_discriminator.to(device)
+        self.discriminator.to(device)
         self.crit_GAN.to(device)
         self.crit_Feat.to(device)
         self.crit_Vgg.to(device)
@@ -226,7 +224,7 @@ class MultiModalityDiscriminatorLoss(nn.Module):
             # So both fake and real images are fed to D all at once.
             fake_and_real = torch.cat([fake_concat, real_concat], dim=0)
 
-            discriminator_out = self.edge_discriminator(fake_and_real)
+            discriminator_out = self.discriminator(fake_and_real)
 
             pred_fake, pred_real = self.divide_pred(discriminator_out)
 
@@ -256,7 +254,7 @@ class MultiModalityDiscriminatorLoss(nn.Module):
             img_fake_and_real = torch.cat([img_fake_concat_1,
                                            img_fake_concat_2, img_real_concat],
                                           dim=0)
-            img_discriminator_out = self.image_discriminator(img_fake_and_real)
+            img_discriminator_out = self.discriminator(img_fake_and_real)
             img_pred_fake_1, img_pred_fake_2, img_pred_real = self.divide_pred_img(img_discriminator_out)
             G_loss_1 = self.crit_GAN(img_pred_fake_1, target_is_real=True,
                                      for_discriminator=False)
@@ -313,7 +311,7 @@ class MultiModalityDiscriminatorLoss(nn.Module):
             # So both fake and real images are fed to D all at once.
             fake_and_real = torch.cat([fake_concat, real_concat], dim=0)
 
-            discriminator_out = self.edge_discriminator(fake_and_real)
+            discriminator_out = self.discriminator(fake_and_real)
 
 
             pred_fake, pred_real = self.divide_pred(discriminator_out)
@@ -332,7 +330,7 @@ class MultiModalityDiscriminatorLoss(nn.Module):
             img_fake_and_real = torch.cat([img_fake_concat_1,
                                            img_fake_concat_2, img_real_concat],
                                           dim=0)
-            img_discriminator_out = self.image_discriminator(img_fake_and_real)
+            img_discriminator_out = self.discriminator(img_fake_and_real)
             img_pred_fake_1, img_pred_fake_2, img_pred_real = self.divide_pred_img(img_discriminator_out)
 
             img_D_losses['D_Fake_1'] = self.crit_GAN(img_pred_fake_1, False,
@@ -369,13 +367,11 @@ if __name__ == '__main__':
               cudaDevice)
 
     seg_classes = 34
-    edge_d = discriminator(in_channels=seg_classes + 1).to(device)
-    image_d = discriminator(in_channels=seg_classes + 3).to(device)
-    d = MultiModalityDiscriminatorLoss(edge_discriminator=edge_d,
-                                       image_discriminator=image_d).to(device)
+    disc = discriminator(in_channels=seg_classes + 3).to(device)
+    d = MultiModalityDiscriminatorLoss(discriminator=disc).to(device)
     dummy_seg = torch.Tensor(4, seg_classes, 256, 512).to(device)
     dummy_img = torch.Tensor(4, 3, 256, 512).to(device)
-    dummy_edge = torch.Tensor(4, 1, 256, 512).to(device)
+    dummy_edge = torch.Tensor(4, 3, 256, 512).to(device)
     pred_pack = {
         'edge': dummy_edge,
         'image_init': dummy_img,
