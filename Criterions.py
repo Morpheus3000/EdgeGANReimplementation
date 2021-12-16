@@ -288,9 +288,11 @@ class MultiModalityDiscriminator(nn.Module):
             img_G_losses['VGG_2'] = self.crit_Vgg(pred_I_dd, gt_img) * self.lambda_vgg
 
             total_loss =\
-                    G_losses['GAN'] + G_losses['GAN_Feat'] + G_losses['VGG'] +\
-                    img_G_losses['GAN_1'] + img_G_losses['GAN_Feat_1'] + img_G_losses['VGG_1'] +\
-                    img_G_losses['GAN_2'] + img_G_losses['GAN_Feat_2'] + img_G_losses['VGG_2']
+                    self.lambda_gan * G_losses['GAN'] + self.lambda_feat * G_losses['GAN_Feat'] + self.lambda_vgg * G_losses['VGG'] +\
+                    self.lambda_gan * img_G_losses['GAN_1'] + self.lambda_feat * img_G_losses['GAN_Feat_1'] + self.lambda_vgg * img_G_losses['VGG_1'] +\
+                    self.lambda_gan * img_G_losses['GAN_2'] + self.lambda_feat * img_G_losses['GAN_Feat_2'] + self.lambda_vgg * img_G_losses['VGG_2']
+
+            ret_pack = [G_losses, img_G_losses]
 
         elif update == 'discriminator':
             D_losses = {}
@@ -339,8 +341,9 @@ class MultiModalityDiscriminator(nn.Module):
             total_loss = D_losses['D_Fake'] + D_losses['D_real'] +\
                     img_D_losses['D_Fake_1'] + self.lambd * img_D_losses['D_Fake_2'] +\
                     (self.lambd + 1) * img_D_losses['D_real']
+            ret_pack = [D_losses, img_D_losses]
 
-        return total_loss.mean()
+        return total_loss.mean(), ret_pack
 
 
 if __name__ == '__main__':
@@ -362,12 +365,12 @@ if __name__ == '__main__':
         }
 
     print('Calculating Generator')
-    out = d(pred_pack, gt_pack)
+    out, ret_pack = d(pred_pack, gt_pack)
     print(out)
     print('Backward')
     out.backward()
     print('Calculating Discriminator')
-    out = d(pred_pack, gt_pack, update='discriminator')
+    out, ret_pack = d(pred_pack, gt_pack, update='discriminator')
     print(out)
     print('Backward')
     out.backward()

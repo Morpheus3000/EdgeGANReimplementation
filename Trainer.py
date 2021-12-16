@@ -16,6 +16,8 @@ from Utils import mor_utils
 
 torch.backends.cudnn.benchmark = True
 
+# TODO: Set up GAN training schedule
+
 cudaDevice = ''
 
 if len(cudaDevice) < 1:
@@ -154,22 +156,25 @@ def Train(net, epoch_count):
         net_time = time.time()
         pred = net(seg)
 
-        loss = criterion(pred, images, mask)
-        gan_loss = loss['gan']
-        feat_loss = loss['feat']
-        percep_loss = loss['percep']
+        # Update Generator
 
-        total_loss = lambda_c * gan_loss +\
-                lambda_f * feat_loss +\
-                lambda_p * percep_loss
+        total_loss, ret_pack = criterion(pred, images, update='generator')
+        G_loss = ret_pack[0]
+        img_G_loss = ret_pack[1]
+
+        gan_loss = G_loss['GAN'] + img_G_loss['GAN_1'] + img_G_loss['GAN_2']
+        feat_loss = G_loss['GAN_Feat'] + img_G_loss['GAN_Feat_1'] + img_G_loss['GAN_Feat_2']
+        percep_loss = G_loss['VGG'] + img_G_loss['VGG_1'] + img_G_loss['VGG_2']
 
         total_loss.backward()
         optimizer.step()
         net_timed = time.time() - net_time
 
-        loss_GAN[i] = lambda_c * gan_loss.cpu().detach().numpy()
-        loss_feat[i] = lambda_f * feat_loss.cpu().detach().numpy()
-        loss_percep[i] = lambda_p * percep_loss.cpu().detach().numpy()
+        loss_GAN[i] = lambda_gan * gan_loss.cpu().detach().numpy()
+        loss_feat[i] = lambda_feat * feat_loss.cpu().detach().numpy()
+        loss_percep[i] = lambda_vgg * percep_loss.cpu().detach().numpy()
+
+        # Update Discriminator
 
         if iter_count % saveIter == 0:
             support.saveModels(net, optimizer, iter_count, modelSaveLoc % iter_count)
