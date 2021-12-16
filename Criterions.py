@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from architectures.discriminator import MultiscaleDiscriminator as discriminator
 from architectures.VGGNet import VGG19
 
 
@@ -144,16 +143,12 @@ class FeatLoss(nn.Module):
         return GAN_Feat_loss
 
 
-class MultiModalityDiscriminator(nn.Module):
-    def __init__(self, seg_classes=34, lambda_feat=10, lambda_vgg=10,
-                 lambda_gan=1, lambd=2):
-        super(MultiModalityDiscriminator, self).__init__()
-        self.edge_discriminator = discriminator(
-            in_channels=seg_classes + 1
-        )
-        self.image_discriminator = discriminator(
-            in_channels=seg_classes + 3
-        )
+class MultiModalityDiscriminatorLoss(nn.Module):
+    def __init__(self, edge_discriminator, image_discriminator, seg_classes=34,
+                 lambda_feat=10, lambda_vgg=10, lambda_gan=1, lambd=2):
+        super(MultiModalityDiscriminatorLoss, self).__init__()
+        self.edge_discriminator = edge_discriminator
+        self.image_discriminator = image_discriminator
         self.lambd = lambd
         self.crit_GAN = GANLoss('original')
         self.crit_Feat = torch.nn.L1Loss()
@@ -357,6 +352,7 @@ class MultiModalityDiscriminator(nn.Module):
 
 if __name__ == '__main__':
     from Network import printTensorList
+    from architectures.discriminator import MultiscaleDiscriminator as discriminator
     cudaDevice = ''
 
     if len(cudaDevice) < 1:
@@ -365,15 +361,19 @@ if __name__ == '__main__':
             print('[*] GPU Device selected as default execution device.')
         else:
             device = torch.device('cpu')
-            print('[X] WARN: No GPU Devices found on the system! Using the CPU. '
+            print('[X] WARN: No GPU Devices found on the system! Using the CPU.'
                   'Execution maybe slow!')
     else:
         device = torch.device('cuda:%s' % cudaDevice)
         print('[*] GPU Device %s selected as default execution device.' %
               cudaDevice)
 
-    d = MultiModalityDiscriminator().to(device)
-    dummy_seg = torch.Tensor(4, 34, 256, 512).to(device)
+    seg_classes = 34
+    edge_d = discriminator(in_channels=seg_classes + 1).to(device)
+    image_d = discriminator(in_channels=seg_classes + 3).to(device)
+    d = MultiModalityDiscriminatorLoss(edge_discriminator=edge_d,
+                                       image_discriminator=image_d).to(device)
+    dummy_seg = torch.Tensor(4, seg_classes, 256, 512).to(device)
     dummy_img = torch.Tensor(4, 3, 256, 512).to(device)
     dummy_edge = torch.Tensor(4, 1, 256, 512).to(device)
     pred_pack = {
