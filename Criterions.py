@@ -32,24 +32,25 @@ class GANLoss(nn.Module):
             raise ValueError('Unexpected gan_mode {}'.format(gan_mode))
 
     def to(self, device=None):
-        self.Tensor.to(device)
+        self.device = device
         super().to(device)
+        return self
 
     def get_target_tensor(self, input, target_is_real):
         if target_is_real:
             if self.real_label_tensor is None:
-                self.real_label_tensor = self.Tensor(1).fill_(self.real_label)
+                self.real_label_tensor = self.Tensor(1).fill_(self.real_label).to(self.device)
                 self.real_label_tensor.requires_grad_(False)
             return self.real_label_tensor.expand_as(input)
         else:
             if self.fake_label_tensor is None:
-                self.fake_label_tensor = self.Tensor(1).fill_(self.fake_label)
+                self.fake_label_tensor = self.Tensor(1).fill_(self.fake_label).to(self.device)
                 self.fake_label_tensor.requires_grad_(False)
             return self.fake_label_tensor.expand_as(input)
 
     def get_zero_tensor(self, input):
         if self.zero_tensor is None:
-            self.zero_tensor = self.Tensor(1).fill_(0)
+            self.zero_tensor = self.Tensor(1).fill_(0).to(self.device)
             self.zero_tensor.requires_grad_(False)
         return self.zero_tensor.expand_as(input)
 
@@ -109,6 +110,7 @@ class VGGLoss(nn.Module):
         self.vgg.to(device)
         self.criterion.to(device)
         super().to(device)
+        return self
 
     def forward(self, x, y):
         x_vgg, y_vgg = self.vgg(x), self.vgg(y)
@@ -124,8 +126,13 @@ class FeatLoss(nn.Module):
         self.criterionFeat = torch.nn.L1Loss()
         self.lambda_feat = 10.0
 
+    def to(self, device=None):
+        self.device = device
+        super().to(device)
+        return self
+
     def forward(self, pred_fake, pred_real):
-        GAN_Feat_loss = torch.FloatTensor(1).fill_(0)
+        GAN_Feat_loss = torch.FloatTensor(1).fill_(0).to(self.device)
         num_D = len(pred_fake)
         for i in range(num_D):  # for each discriminator
             # last output is the final prediction, so we exclude it
@@ -139,7 +146,7 @@ class FeatLoss(nn.Module):
 
 class MultiModalityDiscriminator(nn.Module):
     def __init__(self, seg_classes=34, lambda_feat=10, lambda_vgg=10,
-                 lambda_gan=1, lambd):
+                 lambda_gan=1, lambd=2):
         super(MultiModalityDiscriminator, self).__init__()
         self.edge_discriminator = discriminator(
             in_channels=seg_classes + 1
@@ -156,12 +163,14 @@ class MultiModalityDiscriminator(nn.Module):
         self.lambda_gan = lambda_gan
 
     def to(self, device=None):
+        self.device = device
         self.edge_discriminator.to(device)
         self.image_discriminator.to(device)
         self.crit_GAN.to(device)
         self.crit_Feat.to(device)
         self.crit_Vgg.to(device)
         super().to(device)
+        return self
 
     # Take the prediction of fake and real images from the combined batch
     def divide_pred(self, pred):
@@ -231,7 +240,7 @@ class MultiModalityDiscriminator(nn.Module):
             G_losses['GAN'] = G_loss
 
             num_D = len(pred_fake)
-            GAN_Feat_loss = torch.FloatTensor(1).fill_(0)
+            GAN_Feat_loss = torch.FloatTensor(1).fill_(0).to(self.device)
             for i in range(num_D):  # for each discriminator
                 # last output is the final prediction, so we exclude it
                 num_intermediate_outputs = len(pred_fake[i]) - 1
@@ -262,7 +271,7 @@ class MultiModalityDiscriminator(nn.Module):
             img_G_losses['GAN_2'] = G_loss_2
 
             num_D = len(img_pred_fake_1)
-            GAN_Feat_loss = torch.FloatTensor(1).fill_(0)
+            GAN_Feat_loss = torch.FloatTensor(1).fill_(0).to(self.device)
             for i in range(num_D):  # for each discriminator
                 # last output is the final prediction, so we exclude it
                 num_intermediate_outputs = len(img_pred_fake_1[i]) - 1
@@ -275,7 +284,7 @@ class MultiModalityDiscriminator(nn.Module):
             img_G_losses['VGG_1'] = self.crit_Vgg(pred_I_d, gt_img) * self.lambda_vgg
 
             num_D = len(img_pred_fake_2)
-            GAN_Feat_loss = torch.FloatTensor(1).fill_(0)
+            GAN_Feat_loss = torch.FloatTensor(1).fill_(0).to(self.device)
             for i in range(num_D):  # for each discriminator
                 # last output is the final prediction, so we exclude it
                 num_intermediate_outputs = len(img_pred_fake_2[i]) - 1
@@ -348,10 +357,25 @@ class MultiModalityDiscriminator(nn.Module):
 
 if __name__ == '__main__':
     from Network import printTensorList
-    d = MultiModalityDiscriminator()
-    dummy_seg = torch.Tensor(4, 34, 256, 512)
-    dummy_img = torch.Tensor(4, 3, 256, 512)
-    dummy_edge = torch.Tensor(4, 1, 256, 512)
+    cudaDevice = ''
+
+    if len(cudaDevice) < 1:
+        if torch.cuda.is_available():
+            device = torch.device('cuda')
+            print('[*] GPU Device selected as default execution device.')
+        else:
+            device = torch.device('cpu')
+            print('[X] WARN: No GPU Devices found on the system! Using the CPU. '
+                  'Execution maybe slow!')
+    else:
+        device = torch.device('cuda:%s' % cudaDevice)
+        print('[*] GPU Device %s selected as default execution device.' %
+              cudaDevice)
+
+    d = MultiModalityDiscriminator().to(device)
+    dummy_seg = torch.Tensor(4, 34, 256, 512).to(device)
+    dummy_img = torch.Tensor(4, 3, 256, 512).to(device)
+    dummy_edge = torch.Tensor(4, 1, 256, 512).to(device)
     pred_pack = {
         'edge': dummy_edge,
         'image_init': dummy_img,
