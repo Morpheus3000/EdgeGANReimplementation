@@ -13,7 +13,7 @@ from torch.utils.data import DataLoader
 from Network import EdgeGuidedNetwork
 from DataLoader import CityscapesDataset
 from Utils import mor_utils
-from architectures.discriminator import MultiscaleDiscriminator as discriminator
+# from architectures.discriminator import MultiscaleDiscriminator as discriminator
 
 
 torch.backends.cudnn.benchmark = True
@@ -35,24 +35,24 @@ else:
           cudaDevice)
 
 ExperimentName = 'EdgeGANReimplementation'
-iter_targ = '74200'
+iter_targ = 74200
 
-modelLoc = '/var/scratch/pdas/Experiments/%s/' % ExperimentName.replace(' ', '_')
+modelLoc = './Models/%s/' % ExperimentName.replace(' ', '_')
 
 outdir = modelLoc + 'OutputJpeg%s' % ExperimentName.replace(' ', '_')
 os.makedirs(outdir, exist_ok=True)
 model_targ = outdir + '/snapshot_%d.t7' % iter_targ
 
-saveLoc = '/var/scratch/pdas/Experiments/Infer_%s/' % ExperimentName.replace(' ', '_')
-infer_loc = saveLoc + 'Visuals/' 
+saveLoc = './Infer_%s/' % ExperimentName.replace(' ', '_')
+infer_loc = saveLoc + 'Visuals/'
 os.makedirs(infer_loc, exist_ok=True)
 
-data_root = '/var/scratch/pdas/Datasets/Cityscapes/Cityscapes_test_full/'
-train_list = '/var/scratch/pdas/Datasets/Cityscapes/test_list.str'
+data_root = 'D:/Datasets/CityScapes/Cityscapes_test_full'
+test_list = 'D:/Datasets/CityScapes/test_list.str'
 # test_list = '/home//Experiments//v4/test_files.txt'
 
 seg_classes = 34
-batch_size = 8
+batch_size = 1
 nthreads = 48
 if batch_size < nthreads:
     nthreads = batch_size
@@ -65,26 +65,26 @@ print(done)
 print('[I] STATUS: Initiate Networks and transfer to device...', end='')
 
 net = EdgeGuidedNetwork(seg_classes).to(device)
-discrim = discriminator(in_channels=(seg_classes + 3)).to(device)
+# discrim = discriminator(in_channels=(seg_classes + 3)).to(device)
 
 model, _, _ = support.loadModels(
-    {'G': net,
-     'D': discrim},
+    {'G': net,},
+     # 'D': discrim},
     model_targ
 )
 
 net = model['G']
-discrim = model['D']
+# discrim = model['D']
 
 if torch.cuda.device_count() > 1:
     print("Let's use", torch.cuda.device_count(), "GPUs!...", end='')
     net = nn.DataParallel(net)
 net.to(device)
 
-if torch.cuda.device_count() > 1:
-    print("Let's use", torch.cuda.device_count(), "GPUs!...", end='')
-    discrim = nn.DataParallel(discrim)
-discrim.to(device)
+# if torch.cuda.device_count() > 1:
+#     print("Let's use", torch.cuda.device_count(), "GPUs!...", end='')
+#     discrim = nn.DataParallel(discrim)
+# discrim.to(device)
 
 print(done)
 
@@ -112,7 +112,8 @@ def Infer(net):
         edge = Variable(images['edge']).to(device)
         edge = edge.expand(-1, 3, -1, -1)
 
-        pred = net(seg)
+        with torch.no_grad():
+            pred = net(seg)
 
         pred_rgb = pred['image']
 
@@ -129,12 +130,11 @@ def Infer(net):
             imageio.imwrite(infer_loc + '/%s.png' % n, img)
 
 
-iter_count = 0
+if __name__ == '__main__':
+    print('[*] Beginning Training:')
+    print('\tModels loaded from: ', outdir)
+    print('\tModel infer iter: ', iter_targ)
+    print('\tExperiment Name: ', ExperimentName)
+    print('\tVisuals saved at: ', infer_loc)
 
-print('[*] Beginning Training:')
-print('\tModels loaded from: ', outdir)
-print('\tModel infer iter: ', iter_targ)
-print('\tExperiment Name: ', ExperimentName)
-print('\tVisuals saved at: ', infer_loc)
-
-Infer(net)
+    Infer(net)

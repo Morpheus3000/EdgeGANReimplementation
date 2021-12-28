@@ -133,4 +133,6 @@ dmypy.json
 *~
 todo*
 *.vim
-
+Models/
+Infer_*/
+*.zip

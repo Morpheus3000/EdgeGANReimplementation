@@ -56,10 +56,12 @@ class mor_utils:
         torch.save(checkpoint, path)
         # model.to(self.device)
 
-    def loadModels(self, model, path, optims=None, Test=True):
+    def loadModels(self, model, path, optims=None, Test=True,
+                   load_discrim=False):
         checkpoint = torch.load(path)
         model['G'].load_state_dict(checkpoint['model'][0])
-        model['D'].load_state_dict(checkpoint['model'][1])
+        if load_discrim:
+            model['D'].load_state_dict(checkpoint['model'][1])
         if not Test:
             optims['G'].load_state_dict(checkpoint['optimizer'][0])
             optims['D'].load_state_dict(checkpoint['optimizer'][1])
