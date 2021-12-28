@@ -39,7 +39,6 @@ ExperimentName = 'EdgeGANReimplementation'
 saveLoc = '/var/scratch/pdas/Experiments/%s/' % ExperimentName.replace(' ', '_')
 
 outdir = saveLoc + 'OutputJpeg%s' % ExperimentName.replace(' ', '_')
-os.makedirs(outdir, exist_ok=True)
 
 modelSaveLoc = outdir + '/snapshot_%d.t7'
 
@@ -297,35 +296,9 @@ print('\tMax Epoch: ', max_epochs)
 print('\tLogging iter: ', displayIter)
 print('\tModels Dumped at: ', outdir)
 print('\tExperiment Name: ', ExperimentName)
-
-for i in range(max_epochs):
-    avg_g_e_loss,\
-        avg_f_e_loss,\
-        avg_p_e_loss,\
-        avg_g_d_loss,\
-        avg_f_d_loss,\
-        avg_p_d_loss,\
-        avg_g_dd_loss,\
-        avg_f_dd_loss,\
-        avg_p_dd_loss,\
-        avg_e_D_loss,\
-        avg_i_D_loss = Train(net, i)
-
-    print('[*] Epoch %d - Gen_e: %0.4f, Feat_e: %0.4f, Percep_e: %0.4f,'
-          ' Gen_i_dd: %0.4f, Feat_i_dd: %0.4f, Percep_i_dd: %0.4f,'
-          ' D_e: %0.4f, D_i: %0.4f,' % (
-              i + 1,
-              avg_g_e_loss,
-              avg_f_e_loss,
-              avg_p_e_loss,
-              avg_g_dd_loss,
-              avg_f_dd_loss,
-              avg_p_dd_loss,
-              avg_e_D_loss,
-              avg_i_D_loss
-          ))
-
-    support.saveModels(
+mod = {'G': net,
+         'D': discrim}
+support.saveModels(
         {'G': net,
          'D': discrim},
         {'G': optimizer_G,

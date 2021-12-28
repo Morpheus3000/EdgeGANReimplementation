@@ -25,50 +25,44 @@ class mor_utils:
                 print('\tTensor of Size: ', tensor.size())
             print(']')
 
-    def saveModels(self, model, optims, iterations, path):
+    def saveModels(self, model, optims, iterations, path, dd=True):
         # cpu = torch.device('cpu')
-        if isinstance(model, nn.DataParallel):
+        if dd:
             checkpoint = {
                 'iters': iterations,
-                'model': {
+                'model': [
                     model['G'].module.state_dict(),
-                    model['D_e'].module.state_dict(),
-                    model['D_i'].module.state_dict(),
-                },
+                    model['D'].module.state_dict(),
+                ],
                 # 'model': model.module.to(cpu).state_dict(),
-                'optimizer': {
+                'optimizer': [
                     optims['G'].state_dict(),
-                    optims['D_e'].state_dict(),
-                    optims['D_i'].state_dict()
-                }
+                    optims['D'].state_dict(),
+                ]
             }
         else:
             checkpoint = {
                 'iters': iterations,
-                'model': {
+                'model': [
                     model['G'].state_dict(),
-                    model['D_e'].state_dict(),
-                    model['D_i'].state_dict(),
-                },
+                    model['D'].state_dict(),
+                ],
                 # 'model': model.to(cpu).state_dict(),
-                'optimizer': {
+                'optimizer': [
                     optims['G'].state_dict(),
-                    optims['D_e'].state_dict(),
-                    optims['D_i'].state_dict()
-                }
+                    optims['D'].state_dict(),
+                ]
             }
         torch.save(checkpoint, path)
         # model.to(self.device)
 
     def loadModels(self, model, path, optims=None, Test=True):
         checkpoint = torch.load(path)
-        model['G'].load_state_dict(checkpoint['model']['G'])
-        model['D_e'].load_state_dict(checkpoint['model']['D_e'])
-        model['D_i'].load_state_dict(checkpoint['model']['D_i'])
+        model['G'].load_state_dict(checkpoint['model'][0])
+        model['D'].load_state_dict(checkpoint['model'][1])
         if not Test:
-            optims['G'].load_state_dict(checkpoint['optimizer']['G'])
-            optims['D_e'].load_state_dict(checkpoint['optimizer']['D_e'])
-            optims['D_i'].load_state_dict(checkpoint['optimizer']['D_i'])
+            optims['G'].load_state_dict(checkpoint['optimizer'][0])
+            optims['D'].load_state_dict(checkpoint['optimizer'][1])
         return model, optims, checkpoint['iters']
 
     def dumpOutputs(self, vis, preds, gts=None, num=13, iteration=0,

@@ -34,7 +34,7 @@ else:
     print('[*] GPU Device %s selected as default execution device.' %
           cudaDevice)
 
-ExperimentName = 'EdgeGANReimplementation'
+ExperimentName = 'EdgeGANI'
 
 saveLoc = '/var/scratch/pdas/Experiments/%s/' % ExperimentName.replace(' ', '_')
 
@@ -149,10 +149,6 @@ def Train(net, epoch_count):
     img_d_loss_feat = np.empty(batches_train)
     img_d_loss_percep = np.empty(batches_train)
 
-    img_dd_loss_G = np.empty(batches_train)
-    img_dd_loss_feat = np.empty(batches_train)
-    img_dd_loss_percep = np.empty(batches_train)
-
     edge_loss_G[:] = np.nan
     edge_loss_D[:] = np.nan
     edge_loss_feat[:] = np.nan
@@ -162,10 +158,6 @@ def Train(net, epoch_count):
     img_loss_D[:] = np.nan
     img_d_loss_feat[:] = np.nan
     img_d_loss_percep[:] = np.nan
-
-    img_dd_loss_G[:] = np.nan
-    img_dd_loss_feat[:] = np.nan
-    img_dd_loss_percep[:] = np.nan
 
     Epoch_time = time.time()
 
@@ -208,10 +200,6 @@ def Train(net, epoch_count):
         img_d_loss_feat[i] = lambda_feat * img_G_loss['GAN_Feat_1'].cpu().detach().numpy()
         img_d_loss_percep[i] = lambda_vgg * img_G_loss['VGG_1'].cpu().detach().numpy()
 
-        img_dd_loss_G[i] = lambda_gan * img_G_loss['GAN_2'].cpu().detach().numpy()
-        img_dd_loss_feat[i] = lambda_feat * img_G_loss['GAN_Feat_2'].cpu().detach().numpy()
-        img_dd_loss_percep[i] = lambda_vgg * img_G_loss['VGG_2'].cpu().detach().numpy()
-
         # Update Discriminator
         total_loss_D, ret_pack_D = criterion(pred, target, update='discriminator')
         D_loss = ret_pack_D[0]
@@ -223,21 +211,20 @@ def Train(net, epoch_count):
         edge_loss_D[i] = D_loss['D_Fake'].cpu().detach().numpy() +\
             D_loss['D_real'].cpu().detach().numpy()
         img_loss_D[i] = (lambd + 1) * img_D_loss['D_real'].cpu().detach().numpy() +\
-            img_D_loss['D_Fake_1'].cpu().detach().numpy() +\
-            lambd * img_D_loss['D_Fake_2'].cpu().detach().numpy()
+            img_D_loss['D_Fake_1'].cpu().detach().numpy()
 
         net_timed = time.time() - net_time
 
         # if iter_count % saveIter == 0:
         t.set_description('[Iter %d] Feat_e: %0.4f, Percep_e: %0.4f,'
-                          ' Feat_i_dd: %0.4f, Percep_i_dd: %0.4f,'
+                          ' Feat_i_d: %0.4f, Percep_i_d: %0.4f,'
                           ' Epoch: %d, Time: %0.4f' % (
                               iter_count,
                               edge_loss_feat[i],
                               edge_loss_percep[i],
 
-                              img_dd_loss_feat[i],
-                              img_dd_loss_percep[i],
+                              img_d_loss_feat[i],
+                              img_d_loss_percep[i],
 
                               epoch_count, net_timed
                           ))
@@ -249,10 +236,6 @@ def Train(net, epoch_count):
     avg_g_d_loss = np.nanmean(img_d_loss_G)
     avg_f_d_loss = np.nanmean(img_d_loss_feat)
     avg_p_d_loss = np.nanmean(img_d_loss_percep)
-
-    avg_g_dd_loss = np.nanmean(img_dd_loss_G)
-    avg_f_dd_loss = np.nanmean(img_dd_loss_feat)
-    avg_p_dd_loss = np.nanmean(img_dd_loss_percep)
 
     avg_e_D_loss = np.nanmean(edge_loss_D)
     avg_i_D_loss = np.nanmean(img_loss_D)
@@ -283,9 +266,6 @@ def Train(net, epoch_count):
         avg_g_d_loss,\
         avg_f_d_loss,\
         avg_p_d_loss,\
-        avg_g_dd_loss,\
-        avg_f_dd_loss,\
-        avg_p_dd_loss,\
         avg_e_D_loss,\
         avg_i_D_loss
 
@@ -305,22 +285,19 @@ for i in range(max_epochs):
         avg_g_d_loss,\
         avg_f_d_loss,\
         avg_p_d_loss,\
-        avg_g_dd_loss,\
-        avg_f_dd_loss,\
-        avg_p_dd_loss,\
         avg_e_D_loss,\
         avg_i_D_loss = Train(net, i)
 
     print('[*] Epoch %d - Gen_e: %0.4f, Feat_e: %0.4f, Percep_e: %0.4f,'
-          ' Gen_i_dd: %0.4f, Feat_i_dd: %0.4f, Percep_i_dd: %0.4f,'
+          ' Gen_i_d: %0.4f, Feat_i_d: %0.4f, Percep_i_d: %0.4f,'
           ' D_e: %0.4f, D_i: %0.4f,' % (
               i + 1,
               avg_g_e_loss,
               avg_f_e_loss,
               avg_p_e_loss,
-              avg_g_dd_loss,
-              avg_f_dd_loss,
-              avg_p_dd_loss,
+              avg_g_d_loss,
+              avg_f_d_loss,
+              avg_p_d_loss,
               avg_e_D_loss,
               avg_i_D_loss
           ))

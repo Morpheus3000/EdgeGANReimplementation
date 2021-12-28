@@ -348,6 +348,168 @@ class MultiModalityDiscriminatorLoss(nn.Module):
         return total_loss.mean(), ret_pack
 
 
+class MultiModalityDiscriminatorEdgeGANILoss(nn.Module):
+    def __init__(self, discriminator, seg_classes=34,
+                 lambda_feat=10, lambda_vgg=10, lambda_gan=1, lambd=2):
+        super(MultiModalityDiscriminatorEdgeGANILoss, self).__init__()
+        self.discriminator = discriminator
+        self.lambd = lambd
+        self.crit_GAN = GANLoss('original')
+        self.crit_Feat = torch.nn.L1Loss()
+        self.crit_Vgg = VGGLoss()
+        self.lambda_vgg = lambda_vgg
+        self.lambda_feat = lambda_feat
+        self.lambda_gan = lambda_gan
+
+    def to(self, device=None):
+        self.device = device
+        self.discriminator.to(device)
+        self.crit_GAN.to(device)
+        self.crit_Feat.to(device)
+        self.crit_Vgg.to(device)
+        super().to(device)
+        return self
+
+    # Take the prediction of fake and real images from the combined batch
+    def divide_pred(self, pred):
+        # the prediction contains the intermediate outputs of multiscale GAN,
+        # so it's usually a list
+        if type(pred) == list:
+            fake = []
+            real = []
+            for p in pred:
+                fake.append([tensor[:tensor.size(0) // 2] for tensor in p])
+                real.append([tensor[tensor.size(0) // 2:] for tensor in p])
+        else:
+            fake = pred[:pred.size(0) // 2]
+            real = pred[pred.size(0) // 2:]
+
+        return fake, real
+
+    def forward(self, pred, gts, update='generator'):
+        pred_e = pred['edge']
+        pred_I_d = pred['image_init']
+
+        gt_img = gts['rgb']
+        gt_edge = gts['edge']
+        gt_sem = gts['sem']
+
+        if update == 'generator':
+            G_losses = {}
+            img_G_losses = {}
+            # Edge GAN Loss
+            fake_concat = torch.cat([gt_sem, pred_e], dim=1)
+            real_concat = torch.cat([gt_sem, gt_edge], dim=1)
+
+            # In Batch Normalization, the fake and real images are
+            # recommended to be in the same batch to avoid disparate
+            # statistics in fake and real images.
+            # So both fake and real images are fed to D all at once.
+            fake_and_real = torch.cat([fake_concat, real_concat], dim=0)
+
+            discriminator_out = self.discriminator(fake_and_real)
+
+            pred_fake, pred_real = self.divide_pred(discriminator_out)
+
+            G_loss = self.crit_GAN(pred_fake, target_is_real=True,
+                                   for_discriminator=False)
+            G_losses['GAN'] = G_loss
+
+            num_D = len(pred_fake)
+            GAN_Feat_loss = torch.FloatTensor(1).fill_(0).to(self.device)
+            for i in range(num_D):  # for each discriminator
+                # last output is the final prediction, so we exclude it
+                num_intermediate_outputs = len(pred_fake[i]) - 1
+                for j in range(num_intermediate_outputs):  # for each layer output
+                    unweighted_loss = self.crit_Feat(
+                        pred_fake[i][j], pred_real[i][j].detach())
+                    GAN_Feat_loss += unweighted_loss * self.lambda_feat / num_D
+            G_losses['GAN_Feat'] = GAN_Feat_loss
+
+            G_losses['VGG'] = self.crit_Vgg(
+                pred_e.expand(-1, 3, -1, -1),
+                gt_edge.expand(-1, 3, -1, -1)) * self.lambda_vgg
+
+            # Image GAN Loss
+            img_real_concat = torch.cat([gt_sem, gt_img], dim=1)
+            img_fake_concat_1 = torch.cat([gt_sem, pred_I_d], dim=1)
+            img_fake_and_real = torch.cat([img_fake_concat_1,
+                                           img_real_concat],
+                                          dim=0)
+            img_discriminator_out = self.discriminator(img_fake_and_real)
+            img_pred_fake_1, img_pred_real = self.divide_pred(img_discriminator_out)
+            G_loss_1 = self.crit_GAN(img_pred_fake_1, target_is_real=True,
+                                     for_discriminator=False)
+            img_G_losses['GAN_1'] = G_loss_1
+
+            num_D = len(img_pred_fake_1)
+            GAN_Feat_loss = torch.FloatTensor(1).fill_(0).to(self.device)
+            for i in range(num_D):  # for each discriminator
+                # last output is the final prediction, so we exclude it
+                num_intermediate_outputs = len(img_pred_fake_1[i]) - 1
+                for j in range(num_intermediate_outputs):  # for each layer output
+                    unweighted_loss = self.crit_Feat(
+                        img_pred_fake_1[i][j], img_pred_real[i][j].detach())
+                    GAN_Feat_loss += unweighted_loss * self.lambda_feat / num_D
+            img_G_losses['GAN_Feat_1'] = GAN_Feat_loss
+
+            img_G_losses['VGG_1'] = self.crit_Vgg(pred_I_d, gt_img) * self.lambda_vgg
+
+            total_loss =\
+                    self.lambda_gan * G_losses['GAN'] + self.lambda_feat * G_losses['GAN_Feat'] + self.lambda_vgg * G_losses['VGG'] +\
+                    self.lambda_gan * img_G_losses['GAN_1'] + self.lambda_feat * img_G_losses['GAN_Feat_1'] + self.lambda_vgg * img_G_losses['VGG_1']
+
+            ret_pack = [G_losses, img_G_losses]
+
+        elif update == 'discriminator':
+            D_losses = {}
+            img_D_losses = {}
+            # For Edge discimination
+            fake_edges = pred_e.detach()
+            fake_concat = torch.cat([gt_sem, fake_edges], dim=1)
+            real_concat = torch.cat([gt_sem, gt_edge], dim=1)
+
+            # In Batch Normalization, the fake and real images are
+
+            # recommended to be in the same batch to avoid disparate
+            # statistics in fake and real images.
+            # So both fake and real images are fed to D all at once.
+            fake_and_real = torch.cat([fake_concat, real_concat], dim=0)
+
+            discriminator_out = self.discriminator(fake_and_real)
+
+
+            pred_fake, pred_real = self.divide_pred(discriminator_out)
+
+            D_losses['D_Fake'] = self.crit_GAN(pred_fake, False,
+                                               for_discriminator=True)
+            D_losses['D_real'] = self.crit_GAN(pred_real, True,
+                                               for_discriminator=True)
+
+            # For Img discrimination
+            fake_img_1 = pred_I_d.detach()
+            img_real_concat = torch.cat([gt_sem, gt_img], dim=1)
+            img_fake_concat_1 = torch.cat([gt_sem, fake_img_1], dim=1)
+            img_fake_and_real = torch.cat([img_fake_concat_1,
+                                           img_real_concat],
+                                          dim=0)
+            img_discriminator_out = self.discriminator(img_fake_and_real)
+            img_pred_fake_1, img_pred_real = self.divide_pred(img_discriminator_out)
+
+            img_D_losses['D_Fake_1'] = self.crit_GAN(img_pred_fake_1, False,
+                                                     for_discriminator=True)
+            img_D_losses['D_real'] = self.crit_GAN(pred_real, True,
+                                                   for_discriminator=True)
+
+            total_loss = D_losses['D_Fake'] + D_losses['D_real'] +\
+                    img_D_losses['D_Fake_1'] +\
+                    (self.lambd + 1) * img_D_losses['D_real']
+
+            ret_pack = [D_losses, img_D_losses]
+
+        return total_loss.mean(), ret_pack
+
+
 if __name__ == '__main__':
     from Network import printTensorList
     from architectures.discriminator import MultiscaleDiscriminator as discriminator
@@ -368,7 +530,7 @@ if __name__ == '__main__':
 
     seg_classes = 34
     disc = discriminator(in_channels=seg_classes + 3).to(device)
-    d = MultiModalityDiscriminatorLoss(discriminator=disc).to(device)
+    d = MultiModalityDiscriminatorEdgeGANILoss(discriminator=disc).to(device)
     dummy_seg = torch.Tensor(4, seg_classes, 256, 512).to(device)
     dummy_img = torch.Tensor(4, 3, 256, 512).to(device)
     dummy_edge = torch.Tensor(4, 3, 256, 512).to(device)

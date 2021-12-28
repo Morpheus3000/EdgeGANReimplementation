@@ -114,26 +114,27 @@ def get_nonspade_norm_layer():
 
 
 if __name__ == '__main__':
-    # generate
-    from Network import *
-    seg_classes = 30
-    net = EdgeGuidedNetwork(seg_classes)
-    net.init_weights()
-    # print(net)
-    seg = torch.Tensor(4, seg_classes, 512, 256)
-    out = net(seg)
-    I_e_d, I_d, I_dd = out['edge'], out['image_init'], out['image']
-    
-    I_e = torch.randn_like(I_e_d)
-    I = torch.randn_like(I_d)
-	
+    # # generate
+    # from Network import *
+    # seg_classes = 30
+    # net = EdgeGuidedNetwork(seg_classes)
+    # net.init_weights()
+    # # print(net)
+    # seg = torch.Tensor(4, seg_classes, 512, 256)
+    # out = net(seg)
+    # I_e_d, I_d, I_dd = out['edge'], out['image_init'], out['image']
+
+    # I_e = torch.randn_like(I_e_d)
+    # I = torch.randn_like(I_d)
+
     # discriminator part
-    D_edge = MultiscaleDiscriminator(seg_classes+1) # if edgemap channel is 1
+    # D_edge = MultiscaleDiscriminator(seg_classes+1) # if edgemap channel is 1
     D_image = MultiscaleDiscriminator(seg_classes+3)
-    pred_edge_fake = D_edge(torch.cat([seg, I_e_d], dim=1))
-    pred_image_fake1 = D_image(torch.cat([seg, I_d], dim=1))
-    pred_image_fake2 = D_image(torch.cat([seg, I_dd], dim=1))
-    pred_edge_real = D_edge(torch.cat([seg, I_e], dim=1))
-    pred_image_real = D_image(torch.cat([seg, I], dim=1))
-    
+    print(D_image)
+    # pred_edge_fake = D_edge(torch.cat([seg, I_e_d], dim=1))
+    # pred_image_fake1 = D_image(torch.cat([seg, I_d], dim=1))
+    # pred_image_fake2 = D_image(torch.cat([seg, I_dd], dim=1))
+    # pred_edge_real = D_edge(torch.cat([seg, I_e], dim=1))
+    # pred_image_real = D_image(torch.cat([seg, I], dim=1))
+
     # printTensorList(out)
