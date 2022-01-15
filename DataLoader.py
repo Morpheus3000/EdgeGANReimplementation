@@ -62,8 +62,8 @@ if __name__ == '__main__':
     import time
     from Network import printTensorList
 
-    data_root = 'D:/Datasets/CityScapes/Cityscapes_train_full/'
-    train_list = 'D:/Datasets/CityScapes/Cityscapes_train_full/train_list.str'
+    data_root = '/home/Cityscapes_train_full/'
+    train_list = '/home/Cityscapes_train_full/train_list.str'
 
     print('[+] Init dataloader')
     testSet = CityscapesDataset(train_list, data_root)

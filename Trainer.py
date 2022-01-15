@@ -36,26 +36,24 @@ else:
 
 ExperimentName = 'EdgeGANReimplementation'
 
-saveLoc = '/var/scratch/pdas/Experiments/%s/' % ExperimentName.replace(' ', '_')
+saveLoc = '/home/Experiments/%s/' % ExperimentName.replace(' ', '_')
 
 outdir = saveLoc + 'OutputJpeg%s' % ExperimentName.replace(' ', '_')
 os.makedirs(outdir, exist_ok=True)
 
 modelSaveLoc = outdir + '/snapshot_%d.t7'
 
-data_root = '/var/scratch/pdas/Datasets/Cityscapes/Cityscapes_train_full/'
-train_list = '/var/scratch/pdas/Datasets/Cityscapes/train_list.str'
-# test_list = '/home//Experiments//v4/test_files.txt'
+data_root = '/home/Datasets/Cityscapes/Cityscapes_train_full/'
+train_list = '/home/Datasets/Cityscapes/train_list.str'
 
 seg_classes = 34
 batch_size = 8
 nthreads = 48
 if batch_size < nthreads:
     nthreads = batch_size
-max_epochs = 200 # 250
+max_epochs = 200
 lr_mod_epoch = 100
 displayIter = 10
-# saveIter = 50000
 
 lambda_gan = 1
 lambda_feat = 10
@@ -110,7 +108,6 @@ criterion = crit(
 print(done)
 print('[I] STATUS: Initiate Dataloaders...')
 trainset = CityscapesDataset(train_list, data_root)
-# testset = CityscapesDataset(test_list, data_root)
 
 trainLoader = DataLoader(trainset, batch_size=batch_size, shuffle=True,
                          num_workers=nthreads, pin_memory=True, drop_last=True)
@@ -120,15 +117,6 @@ print('\t[*] Train set with %d samples and %d batches.' % (samples_train,
                                                            batches_train),
       end='')
 print(done)
-# testLoader = DataLoader(testset, batch_size=batch_size, shuffle=False,
-#                          num_workers=nthreads, pin_memory=True)
-# batches_test = len(testLoader)
-# samples_test = len(testLoader.dataset)
-# print('\t[*] Test set with %d samples and %d batches.' % (samples_test,
-#                                                           batches_test),
-#       end='')
-# print(done)
-
 
 global iter_count
 
@@ -173,7 +161,6 @@ def Train(net, epoch_count):
         iter_count += 1
         images, _ = data
 
-        # rgb = Variable(images[0]).to(device)
         seg = Variable(images['sem']).to(device)
         rgb = Variable(images['rgb']).to(device)
         edge = Variable(images['edge']).to(device)
@@ -228,7 +215,6 @@ def Train(net, epoch_count):
 
         net_timed = time.time() - net_time
 
-        # if iter_count % saveIter == 0:
         t.set_description('[Iter %d] Feat_e: %0.4f, Percep_e: %0.4f,'
                           ' Feat_i_dd: %0.4f, Percep_i_dd: %0.4f,'
                           ' Epoch: %d, Time: %0.4f' % (

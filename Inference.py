@@ -13,7 +13,6 @@ from torch.utils.data import DataLoader
 from Network import EdgeGuidedNetwork
 from DataLoader import CityscapesDataset
 from Utils import mor_utils
-# from architectures.discriminator import MultiscaleDiscriminator as discriminator
 
 
 torch.backends.cudnn.benchmark = True
@@ -47,9 +46,8 @@ saveLoc = './Infer_%s/' % ExperimentName.replace(' ', '_')
 infer_loc = saveLoc + 'Visuals/'
 os.makedirs(infer_loc, exist_ok=True)
 
-data_root = 'D:/Datasets/CityScapes/Cityscapes_test_full'
-test_list = 'D:/Datasets/CityScapes/test_list.str'
-# test_list = '/home//Experiments//v4/test_files.txt'
+data_root = '/home/Datasets/Cityscapes/Cityscapes_train_full/'
+test_list = '/home/Datasets/Cityscapes/test_list.str'
 
 seg_classes = 34
 batch_size = 1
@@ -65,26 +63,18 @@ print(done)
 print('[I] STATUS: Initiate Networks and transfer to device...', end='')
 
 net = EdgeGuidedNetwork(seg_classes).to(device)
-# discrim = discriminator(in_channels=(seg_classes + 3)).to(device)
 
 model, _, _ = support.loadModels(
     {'G': net,},
-     # 'D': discrim},
     model_targ
 )
 
 net = model['G']
-# discrim = model['D']
 
 if torch.cuda.device_count() > 1:
     print("Let's use", torch.cuda.device_count(), "GPUs!...", end='')
     net = nn.DataParallel(net)
 net.to(device)
-
-# if torch.cuda.device_count() > 1:
-#     print("Let's use", torch.cuda.device_count(), "GPUs!...", end='')
-#     discrim = nn.DataParallel(discrim)
-# discrim.to(device)
 
 print(done)
 
